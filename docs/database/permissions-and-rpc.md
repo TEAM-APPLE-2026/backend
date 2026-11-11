@@ -41,7 +41,7 @@ RLS는 행 단위다. 역할, 승인 상태, selected 결과 같은 보호 컬�
 
 ## 3. RPC 계약 초안
 
-이름은 v2와 최대한 맞춘다. UUID는 프론트에서 하드코딩하지 않는다. 아래 함수는 아직 구현되지 않았다.
+구체적인 JS 입력·출력과 DB 변환은 [연동 계약](integration-contract.md)을 따른다. 아래 표는 DB 처리 요약이다. 이름은 v2와 최대한 맞춘다. UUID는 프론트에서 하드코딩하지 않는다. 아래 함수는 아직 구현되지 않았다.
 
 | 함수 | 입력 → 출력 | 처리 조건/원자성 |
 | --- | --- | --- |
@@ -49,11 +49,11 @@ RLS는 행 단위다. 역할, 승인 상태, selected 결과 같은 보호 컬�
 | create_firm_application | firm_name,biz_no,cert_path,lawyers → firm | firm 계정, 소유 증빙, pending 초기화. biz_status/approved 입력 불가 |
 | save_report | report_id?,raw_text,fields → report_id | 본인, 길이/항목 타입 확인. AI source를 신뢰된 사실로 취급하지 않음 |
 | create_group | report_id,공개 초안,goal?,deadline? → group_id | report 소유권, 개인정보 유출 scope, 공개 정제. 그룹/본인 참여행/제출 상태를 한 트랜잭션으로 생성 |
-| join_group | group_id,report_id → membership | user, 사례 본인 소유, 모집 허용 상태/시각. 중복은 같은 결과 반환 또는 ALREADY_JOINED |
+| join_group | group_id,report_id → membership | user, 사례 본인 소유, 모집 허용 상태/시각. 같은 사례로 활성 중복 요청은 기존 결과 반환; 다른 사례 또는 탈퇴 후 재합류는 정책 확정 전 CONFLICT |
 | leave_group | group_id → membership | 탈퇴 허용 시점 검토 후 구현. 대표자 공석/투표 자격 처리도 함께 검사 |
 | get_group_members | group_id → nickname,damage_level,period | 활성 참여자, 실제 식별자/원문 제외 |
 | apply_representative | poll_id → candidate | 활성 참여자 본인, representative 종류, 후보 모집 기간 내 |
-| open_poll | group_id,kind,opens_at,closes_at → poll_id | method/firm은 대표자만, 최초 representative 시작 주체는 검토 필요. >=10 활성 인원, 후보/선택지 검증, 유권자 스냅샷 |
+| open_poll | group_id,kind,opens_at,closes_at → poll_id | method/firm은 대표자만, 최초 representative 시작 주체는 검토 필요. 대표자 선거에만 >=10 활성 인원, 후보/선택지 검증, 유권자 스냅샷 |
 | cast_representative_vote | poll_id,option_id → my_ballot | 자격/후보 검사, 회차당 1표 |
 | cast_method_vote | poll_id,choice → my_ballot | choice는 해당 poll 선택지여야 함 |
 | cast_firm_vote | poll_id,proposal_id → my_ballot | 해당 그룹, 제출된 제안, suit 단계 |
@@ -62,13 +62,13 @@ RLS는 행 단위다. 역할, 승인 상태, selected 결과 같은 보호 컬�
 | recommend_method | group_id → method,reason,rule_version | 참여자, 사례·인원 기준 안내값. 법적 자격 보장 아님. 우선순위/기준은 BE1과 검토 |
 | submit_proposal | group_id,제안 필드 → proposal_id | 승인된 로펌+active 사업자, suit, 접수 마감 전, 투표 시작 전. 그룹당 로펌당 1개 |
 | update/withdraw_proposal | proposal_id,변경값 → proposal | 본인 제안, 투표 선택지 확정 전만 |
-| get_group_stats | group_id → member_count,secondary_ratio,evidence_ratio | 로펌 역할, suit 그룹만. 비공개 원문/개인 행 제외 |
+| get_group_stats | group_id → member_count,secondary_ratio,evidence_ratio | 승인된 로펌, suit 그룹만. 비공개 원문/개인 행 제외 |
 | grant_contact_consent | group_id,selected_proposal_id,consent_version → consent | 본인 활성 참여, 현재 선정 제안 일치, 실명/연락처 확인. 다른 로펌 ID 입력 불허 |
 | revoke_contact_consent | group_id → revoked_at | 본인 동의만 철회 |
 | get_selected_contacts | group_id → nickname,real_name,phone | 현재 선정 로펌 본인, 활성 참여+유효한 해당 제안 동의자만 |
 | create_notice | group_id,title,body → notice | 현재 대표자만, 내용 길이 검사 |
 
-예시 요청: `cast_firm_vote({poll_id:"투표 UUID", proposal_id:"제안 UUID"})`. 응답: `{poll_id, proposal_id, updated_at}`. user_id는 서버가 결정한다. 실패 코드는 AUTH_REQUIRED / FORBIDDEN / INVALID_INPUT / ALREADY_JOINED / NOT_ELIGIBLE / POLL_CLOSED / PROPOSAL_CLOSED / CONFLICT를 FE와 맞춘다. 오류 응답에 원문·연락처·비밀키를 넣지 않는다.
+프론트는 `castFirmVote({pollId,proposalId})`를 호출하고 데이터 모듈이 DB의 `cast_firm_vote({poll_id,proposal_id})`로 변환한다. 성공 `{data:{pollId,optionId,updatedAt}}`, 실패 `{error:{code,message}}`는 데이터 모듈에서 정규화한다. 원시 Supabase 응답 형식과 구분한다. user_id는 서버가 결정하고 오류에 원문·연락처·비밀키를 넣지 않는다.
 
 ## 4. 투표 트랜잭션과 자동 마감
 

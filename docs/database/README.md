@@ -6,6 +6,10 @@
 2. [권한·기능 처리 계약](permissions-and-rpc.md): 사용자별 접근 범위, 투표·동의·업로드 처리
 3. [구현 순서·검증 항목](implementation-plan.md): BE1/BE2/FE 연결 지점, 검토가 필요한 세부 규칙
 
+4. [BE1·BE2 연동 계약 수정본](integration-contract.md): 이름 규칙, 함수별 입력·출력, 오류·빈 결과, AI 저장·익명 집계 제안
+
+이번 수정에서는 기존 테이블 설계를 유지하면서 임시 API 제작에 필요한 계약을 추가했다. **협의용 제안과 확정된 7.2를 구분**한다. 상세 우선순위: 테이블·타입은 schema.md, 함수 응답 형태는 integration-contract.md, 권한은 permissions-and-rpc.md.
+
 ## 확정 기준
 
 | 항목 | 반영 내용 |
