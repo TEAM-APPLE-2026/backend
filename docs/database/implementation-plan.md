@@ -16,7 +16,7 @@
 
 ## 구현 순서
 
-1. 테이블/관계/아래 미정 정책 검토 → Supabase 로컬 개발 프로젝트 설정. BE1과 기존 프로젝트·migration 담당을 맞추고 공동 DB에서 수동 SQL을 중복 실행하지 않는다.
+1. 테이블/관계/아래 미정 정책 검토 → Supabase 로컬 개발 프로젝트 설정. Hande 조직 TEAM-APPLE-2026 공동 프로젝트를 사용하고 BE1과 migration 담당을 맞추며 공동 DB에서 수동 SQL을 중복 실행하지 않는다.
 2. migration으로 Auth 연계 profiles/private/로펌 신청·승인 구조. RLS와 RPC를 같은 PR에서 작성. 일반/로펌/운영자 테스트 계정 준비.
 3. reports/fields/evidences + 비공개 Storage 정책. BE1과 AI key별 JSON 계약 및 업로드 완료 콜백 확정.
 4. groups/members 생성·합류·목록·통계. FE1과 개인정보가 빠진 응답 연결.
@@ -80,3 +80,13 @@
 - 기본키·외래키 대상, 복합 FK 대상의 UNIQUE, 동의의 그룹·로펌 범위, 투표 회차와 자격 기록을 검토했다.
 - 문서 상대 링크와 테이블/RPC 명칭을 검사한다.
 - 실제 PostgreSQL/Supabase 실행, RLS 인수 테스트, Cron 및 업로드 테스트는 다음 구현 PR의 범위다.
+
+## 소민님 피드백 후 실행 순서
+
+1. #1의 협업 문서만 새 PR에 보존한 뒤 #1을 종료한다(B안). 분리 전 frontend/ai/backend 중첩 폴더와 README/.gitignore를 이식하지 않는다.
+2. BE1의 #4 초기 설정을 먼저 검토한다. config.toml의 PostgreSQL major_version=17은 실제 원격 버전 확인이 필요하다. seed 활성화인데 seed.sql이 아직 없는 점은 초기 설정 담당자가 빈 파일 추가 또는 비활성화 중 선택한다. 현재 회원 PR에서 타인 브랜치를 임의 수정하지 않는다.
+3. PR #3 테스트는 가능하면 config의 PostgreSQL 버전과 같은 환경에서 실행한다. 현재 18.6 로컬 실행 시도는 OS 제한으로 실패했으므로 검증 완료가 아니다.
+4. #3의 complete_signup은 terms 인자 미지원, get_my_profile은 firm 정보 미지원이다. 목표 계약과 mock의 차이는 연동 계약 8장을 따른다. 동의 이력/로펌 테이블 후속 PR에서 확장한다.
+5. report_fields 구현 시 secondary_detail을 문자열 키로 추가하고, notice_date는 통지 시점만 저장한다. AI warnings는 필드 테이블에 넣지 않으며 식별값을 warnings/quote에 재노출하지 않는다.
+6. firms 생성 후 BE1이 본인 검증된 국세청 상태만 직접 갱신한다. Storage·Cron·seed도 backend/supabase에 둔다. 등록증 경로는 사례 경로와 분리한다.
+7. 테스트 검토 후 SQL PR을 병합하면 실제 DB에 자동 배포될 수 있다. 병합/공동 DB 실행은 별도 명시적 요청에 따라 진행하며 이 수정 작업에서는 하지 않는다.

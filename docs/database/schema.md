@@ -57,7 +57,7 @@ UQ(user_id, document_key, version). 가입 약관/수집 안내 버전의 수락
 | reject_reason | text? | rejected이면 필수 CHECK |
 | created_at, updated_at | timestamptz | 이력 |
 
-owner 역할=firm 검사. 사업자 상태/승인 필드는 소유 로펌이 변경할 수 없다. 사업자번호·등록증·변호사 자격 정보 변경 시 재검토 필요 여부는 미정; 구현 전에는 승인된 계정의 해당 필드 직접 변경을 막는다.
+국세청 계속/휴업/폐업/조회불가를 active/suspended/closed/unknown으로 매핑한다. BE1 Edge Function이 검증한 본인 로펌의 biz_status·biz_checked_at만 service role로 갱신한다. approval_status는 운영자 승인으로 별도 관리하며 국세청 함수는 변경하지 않는다. owner 역할=firm 검사. 사업자 상태/승인 필드는 소유 로펌이 변경할 수 없다. 사업자번호·등록증·변호사 자격 정보 변경 시 재검토 필요 여부는 미정; 구현 전에는 승인된 계정의 해당 필드 직접 변경을 막는다.
 
 ### firm_lawyers
 
@@ -76,7 +76,7 @@ UQ(id,user_id): 참여 관계에서 사례 작성자와 참여자가 동일한�
 | 컬럼 | 타입/제약 | 용도 |
 | --- | --- | --- |
 | report_id | uuid FK reports.id, 복합 PK 일부 | 대상 사례 |
-| key | text CHECK company/type/notice_date/leaked/secondary/card, 복합 PK 일부 | 정리 항목 |
+| key | text CHECK company/type/notice_date/leaked/secondary/secondary_detail/card, 복합 PK 일부 | 정리 항목 |
 | ai_value | jsonb? | AI 원본 추출값 |
 | quote | text? | AI가 사용한 원문 근거 |
 | user_value | jsonb? | 사용자 수정값 |
@@ -84,7 +84,7 @@ UQ(id,user_id): 참여 관계에서 사례 작성자와 참여자가 동일한�
 | needs_check | boolean, 기본 true | 확인 필요 여부 |
 | updated_at | timestamptz | 수정 시각 |
 
-최종값은 source=user이면 user_value, 아니면 ai_value. JSON null을 값으로 사용하지 않고 SQL NULL을 사용한다. source=user이면 user_value 필수. 기간은 from/to(ISO 날짜)·precision, 유출 정보는 문자열 배열, 예/아니오/모름은 yes/no/unknown 등 key별 JSON 계약을 AI 담당자와 확정한다. 사용자 수정 시 ai_value/quote를 덮어쓰지 않는다. 현재 scope에서 type은 개인정보 유출만 제출 허용. 브라우저 AI 값은 검증된 사실/권한 판단 근거로 취급하지 않는다.
+최종값은 source=user이면 user_value, 아니면 ai_value. JSON null을 값으로 사용하지 않고 SQL NULL을 사용한다. source=user이면 user_value 필수. notice_date는 유출 안내를 받은 시점이며 from/to(ISO 날짜)·precision, 유출 정보는 문자열 배열, 예/아니오/모름은 yes/no/unknown 등 key별 JSON 계약을 AI 담당자와 확정한다. 사용자 수정 시 ai_value/quote를 덮어쓰지 않는다. secondary_detail은 2차 피해 상세 문자열(없거나 추출 불가 시 NULL)이며 secondary의 yes/no/unknown 통계값과 분리한다. quote는 상세의 대체값이 아닌 원문 근거다. secondary_detail/quote는 작성자만 조회하며 로펌 익명 집계에 전달하지 않는다. 실제 유출 발생일은 이번 범위에서 별도 수집하지 않는다. 현재 scope에서 type은 개인정보 유출만 제출 허용. 브라우저 AI 값은 검증된 사실/권한 판단 근거로 취급하지 않는다.
 
 ### evidences
 
@@ -101,7 +101,7 @@ UQ(id,user_id): 참여 관계에서 사례 작성자와 참여자가 동일한�
 | id | uuid PK | 그룹 ID |
 | name, company | text | 공개용 제목/기업 |
 | harm_type | text CHECK privacy_leak | 초기 피해 유형 |
-| period_start, period_end | date? | 사건 기간. 둘 다 있으면 start<=end |
+| period_start, period_end | date? | 통지 시점 범위. 실제 유출 발생 기간이 아님. 둘 다 있으면 start<=end |
 | description, conditions | text | 공개 설명/참여 조건 |
 | required_evidence | text[] 기본 빈 배열 | 필요한 증거 종류 |
 | goal | integer? CHECK >0 | 선택 목표 인원 |
@@ -120,7 +120,7 @@ UQ(id,user_id): 참여 관계에서 사례 작성자와 참여자가 동일한�
 
 `group_id uuid FK groups.id`, `user_id uuid FK profiles.id`, `report_id uuid`, `damage_level text?`, `is_rep boolean 기본 false`, `joined_at timestamptz`, `left_at timestamptz?`, PK(group_id,user_id).
 
-FK(report_id,user_id) → reports(id,user_id). 부분 UQ(group_id) WHERE is_rep AND left_at IS NULL: 활성 대표자는 그룹당 최대 1명. CHECK NOT is_rep OR left_at IS NULL. 피해 시기는 report_fields에서 조회하며 공개 목록에 원문/유출 정보/연락처를 붙이지 않는다. 같은 사례의 여러 그룹 연결 허용 여부는 미정이므로 report_id 단독 UQ를 임의로 만들지 않는다. 현재 합류 시각으로 재가입 자격을 판별한다.
+FK(report_id,user_id) → reports(id,user_id). 부분 UQ(group_id) WHERE is_rep AND left_at IS NULL: 활성 대표자는 그룹당 최대 1명. CHECK NOT is_rep OR left_at IS NULL. 통지 시기는 report_fields.notice_date에서 조회하며 공개 목록에 원문/유출 정보/연락처를 붙이지 않는다. 같은 사례의 여러 그룹 연결 허용 여부는 미정이므로 report_id 단독 UQ를 임의로 만들지 않는다. 현재 합류 시각으로 재가입 자격을 판별한다.
 
 ### group_selections
 

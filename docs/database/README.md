@@ -10,6 +10,8 @@
 
 이번 수정에서는 기존 테이블 설계를 유지하면서 임시 API 제작에 필요한 계약을 추가했다. **협의용 제안과 확정된 7.2를 구분**한다. 상세 우선순위: 테이블·타입은 schema.md, 함수 응답 형태는 integration-contract.md, 권한은 permissions-and-rpc.md.
 
+소민님 피드백 반영본: B안 PR 정리, 공동 Supabase·배포 파일 위치, secondary_detail 추가안, notice_date 통지 의미, 국세청 직접 갱신 경계, Cron ID별 호출 및 PR #3 구현 범위는 연동 계약 8장과 권한 문서를 참고한다. 추가 제안은 소민님 확인이 필요하다.
+
 ## 확정 기준
 
 | 항목 | 반영 내용 |

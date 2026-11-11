@@ -75,7 +75,7 @@ RLS는 행 단위다. 역할, 승인 상태, selected 결과 같은 보호 컬�
 투표 RPC와 마감 RPC는 **같은 polls 행을 SELECT FOR UPDATE**로 잠근다. 잠금을 획득한 뒤 clock_timestamp()로 현재 시각을 확인한다. 트랜잭션 시작 시각을 고정하는 now()만 사용해 대기 후 마감된 표가 들어오지 않도록 한다.
 
 1. 투표: 세션 → 그룹/유권자/활성 참여 검사 → polls 잠금 → opens_at<=현재<closes_at 및 open/scheduled 확인 → 선택지 검사 → ballots upsert. 브라우저에서 임의 집계 쓰기 금지.
-2. 자동 작업: 주기적으로 opens_at/closes_at이 도래한 투표 탐색. Supabase Cron의 지연과 무관하게 투표 RPC 자체가 시각 제한을 집행한다. 실행 주기는 운영 설정(예: 1분)이며 정확히 0초 지연을 보장하지 않는다.
+2. 자동 작업: BE1이 backend 레포 migration에 1분 주기의 Cron을 등록한다. 서버 배치가 만료된 scheduled/open 투표 ID를 찾아 close_vote(poll_id)를 호출한다. 함수가 인자를 받으므로 close_vote() 무인자 호출은 금지한다. opens_at/closes_at이 도래한 투표를 탐색한다. Supabase Cron의 지연과 무관하게 투표 RPC 자체가 시각 제한을 집행한다. 실행 주기는 운영 설정(예: 1분)이며 정확히 0초 지연을 보장하지 않는다.
 3. 마감: polls 잠금 → 이미 최종 상태면 저장 결과 그대로 반환 → 모든 선택지 0표 포함 집계 → poll_results 저장 → 단독 최다 선택지면 winner 확정 → 해당 그룹 대표자/method/group_selections 반영 → group_events와 중복 방지 알림 기록 → commit.
 4. 동점은 tied, 0표는 no_votes로 저장하고 임의 우승자 선정 금지. 동점 재투표는 새 poll.id와 round_no로 기록한다. 누가 언제 재투표를 여는지/0표 후속 처리는 검토 항목.
 5. 제안 수정과 firm 투표 시작도 groups 행 잠금을 같은 순서(groups→polls)로 획득해 선택지 확정과 경합하지 않게 한다. 모든 그룹 변경 RPC는 잠금 순서를 통일한다.
@@ -98,10 +98,16 @@ non-suit 분쟁조정 결정 후 연결 완료를 누가 확인하는지, 종결
 
 ## 6. 파일과 연락처
 
-- 비공개 버킷을 피해 증빙/사업자 증빙으로 나눈다. 경로는 user_id/report_id/random-id.ext. 원본 이름은 DB 표시용이며 경로 식별자로 쓰지 않는다.
+- 비공개 버킷을 피해 증빙/사업자 증빙으로 나눈다. 피해 증빙은 evidences 버킷의 user_id/report_id/random-id.ext, 등록증은 firm-certs 버킷의 user_id/random-id.ext로 구분한다(등록증 경로 제안). 원본 이름은 DB 표시용이며 경로 식별자로 쓰지 않는다.
 - 파일당 10,000,000 bytes, image/jpeg,image/png,application/pdf. 확장자·MIME·실제 형식을 검사하는 업로드 경로를 BE1이 구현한다. 입력한 MIME 문자열만 신뢰하지 않는다.
 - Storage 객체 정책에서도 소유자/연결 사례/로펌 자격을 확인한다. evidences 메타데이터 RLS만으로 파일 실체가 보호된다고 가정하지 않는다.
 - private bucket과 짧은 만료 signed URL 사용. 링크 발급 때마다 권한 재확인. 파일 삭제 실패 시 재시도하고 orphan 정리. 업로드 중 pending 행을 evidence 보유율에 세지 않는다.
 - 실명·연락처 동의는 증거 원본 제공 동의가 아니다. 증거를 로펌에 공개하는 정책은 별도 확정까지 기본 차단한다.
 - 프로필 연락처 수정 RPC는 변경값 검증 후 기존 유효 제공 동의를 철회하는 기본안을 제안한다. 새 값 제공은 재동의. 동의 문구 버전/철회 이력을 보존한다.
 - 서비스 키/NTS 키는 브라우저나 저장소에 넣지 않는다. RLS 우회 키를 FE 연결에 사용하지 않는다.
+
+## 7. 국세청 Edge Function 신뢰 경계
+
+BE1의 nts-verify가 로그인 JWT를 검증하고 profiles.role=firm 및 firms.owner_id=auth.uid()를 확인한 뒤, DB에 저장된 biz_no로 국세청을 조회한다. body의 firm_id/biz_no와 불일치하면 거절한다. 계속/휴업/폐업/조회 불가를 active/suspended/closed/unknown으로 변환하고 biz_status·biz_checked_at만 service role로 갱신한다. approval_status/reviewed_by/reviewed_at 등 운영자 승인 필드는 변경하지 않는다. unchecked는 아직 조회하지 않은 상태로 남긴다.
+
+국세청 응답이 없는 네트워크 실패는 기존 확인 결과와 biz_checked_at을 유지하고 오류로 반환하는 기본안이다. 유효한 조회 불가 응답은 unknown으로 저장한다. 비동기 조회 도중 사업자번호가 바뀌는 경우를 대비해 UPDATE에서 id/owner_id/biz_no를 모두 비교하고 매칭된 행이 없으면 CONFLICT 처리한다. 관리 키는 서버 내부에만 보관하고 임의 테이블/컬럼/상태를 요청으로 받지 않는다. 별도 상태 갱신 RPC는 이번에 추가하지 않는다. firms 구현이 선행되어야 실제 연결 가능하다.
