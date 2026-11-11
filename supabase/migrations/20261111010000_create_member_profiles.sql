@@ -1,5 +1,7 @@
 -- HANDE: profile foundation. Apply once through the migration workflow.
 -- Supabase supplies auth.users, auth.uid(), anon and authenticated roles.
+-- Merge only after infra/config PR #4 and development validation: main deploys to the shared DB.
+-- Profile initialization only: terms acceptance and firm approval are follow-up migrations.
 begin;
 
 create schema hande_private;

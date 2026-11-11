@@ -87,3 +87,15 @@ authenticated 역할은 본인 profiles 행의 nickname 컬럼만 UPDATE할 수 
 
 - https://supabase.com/docs/guides/database/functions
 - https://supabase.com/docs/guides/database/postgres/row-level-security
+
+## 소민님 피드백 반영: 배포·mock 연결
+
+- 공동 프로젝트: Hande 조직 TEAM-APPLE-2026, backend 레포 연결(ref=nchmitaoxqodsjmhmphi). 별도 개인 프로젝트를 만들지 않는다.
+- **이 SQL PR은 Supabase 초기 설정 PR #4 반영과 실행 검증 후 병합한다. main에 합치면 공동 DB에 자동 적용될 수 있다.** 이 작업에서는 병합/실제 DB 적용하지 않는다.
+- AI 모듈은 hande_ai에 두지만 migration·Edge Functions·Storage 정책·Cron·seed.sql은 backend/supabase에 둔다.
+- PR #4의 config.toml은 PostgreSQL major_version=17이다. 테스트 환경은 실제 공동 DB 버전과 대조해야 한다. 기존 18.6 테스트 시도 실패를 원격 검증으로 취급하지 않는다.
+- complete_signup 입력에는 아직 terms가 없다. mock이 목표 계약의 terms를 지원해도 현재 RPC에는 전달하지 않는다. 필수 약관 검증 완료를 의미하지 않는다.
+- get_my_profile은 아직 firm 필드를 반환하지 않는다. 프론트/mock 통합 어댑터가 firm:null로 정규화할 수 있지만 승인 기능은 별도 구현이다.
+- PROFILE_INCOMPLETE는 Auth 인증 실패와 다르다. 로그인 세션을 유지하고 프로필 입력 단계를 표시한다.
+- AI secondary_detail, notice_date 통지 시점, 국세청 biz_status 갱신은 후속 report_fields/firms 구현에 적용한다. 이 회원 전용 migration에는 무관한 테이블이나 동작을 추가하지 않는다.
+- 대시보드 변경은 DB에 직접 반영될 수 있지만 Git에 자동 기록되지 않는다. 변경 SQL의 이중 실행을 피하도록 migration 이력과 대조한다.
