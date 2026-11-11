@@ -1,0 +1,8 @@
+# 환경 변수 / 비밀값 (예시 파일만 커밋 허용)
+.env
+.env.*
+!.env.example
+
+# Supabase CLI 로컬 상태
+supabase/.temp
+supabase/.branches
