@@ -81,7 +81,7 @@ authenticated 역할은 본인 profiles 행의 nickname 컬럼만 UPDATE할 수 
 
 테스트 내용: 익명 접근 거부, 세션 없는 요청 거부, 입력 검증, 연락처 정규화, 정확한 재시도, 역할 변경 차단, 직접 쓰기 차단, 다른 회원 정보 비공개, 닉네임 수정, 불완전 프로필 감지, 실패 시 부분 저장 없음. 동시 세션 경합 테스트와 Supabase Auth/PostgREST 종단 검증은 별도 수행 필요.
 
-이 작업 환경에서는 PostgreSQL 18.6 실행 파일을 확인했으나, 격리된 테스트 DB 초기화가 OS 공유 메모리 권한 제한으로 실패했다. 따라서 실행 테스트 파일은 작성했지만 실행 통과를 주장하지 않는다. 정적 검토 결과와 이 제한을 PR에 기록한다.
+2026-11-12 실행 검증: 네이티브 PostgreSQL 초기화는 OS 공유 메모리 권한 제한으로 실패했으나, 별도 격리 PGlite PostgreSQL 17.5에서 migration과 member_profiles.sql을 실제 실행해 통과했다. Supabase Auth의 최소 users/uid 및 기본 권한을 테스트용으로 구성하고 anon/authenticated 역할 전환으로 RLS·컬럼 권한을 검사했다. 설정의 PostgreSQL 17 계열과 맞췄으며 18.6 엔진에서도 같은 검증이 통과했다. 테스트 fixture 롤백(잔여 사용자 0명), 중복 migration 적용의 안전한 실패도 확인했다. 이는 실제 호스팅 Auth·PostgREST·이메일 인증·동시 세션 경합 검증을 대체하지 않는다. 실행한 SQL은 PR의 blob SHA af4fb50619c2d8ee1d476bd2a36bed4731f2dc74와 일치함을 검사했다.
 
 ## 참고
 
@@ -93,7 +93,7 @@ authenticated 역할은 본인 profiles 행의 nickname 컬럼만 UPDATE할 수 
 - 공동 프로젝트: Hande 조직 TEAM-APPLE-2026, backend 레포 연결(ref=nchmitaoxqodsjmhmphi). 별도 개인 프로젝트를 만들지 않는다.
 - **이 SQL PR은 Supabase 초기 설정 PR #4 반영과 실행 검증 후 병합한다. main에 합치면 공동 DB에 자동 적용될 수 있다.** 이 작업에서는 병합/실제 DB 적용하지 않는다.
 - AI 모듈은 hande_ai에 두지만 migration·Edge Functions·Storage 정책·Cron·seed.sql은 backend/supabase에 둔다.
-- PR #4의 config.toml은 PostgreSQL major_version=17이다. 테스트 환경은 실제 공동 DB 버전과 대조해야 한다. 기존 18.6 테스트 시도 실패를 원격 검증으로 취급하지 않는다.
+- PR #4의 config.toml은 PostgreSQL major_version=17이다. 테스트 환경은 실제 공동 DB 버전과 대조해야 한다. 네이티브 실행 실패와 PGlite 17.5 실행 통과를 구분하며, 어느 쪽도 원격 Auth 종단 검증으로 취급하지 않는다.
 - complete_signup 입력에는 아직 terms가 없다. mock이 목표 계약의 terms를 지원해도 현재 RPC에는 전달하지 않는다. 필수 약관 검증 완료를 의미하지 않는다.
 - get_my_profile은 아직 firm 필드를 반환하지 않는다. 프론트/mock 통합 어댑터가 firm:null로 정규화할 수 있지만 승인 기능은 별도 구현이다.
 - PROFILE_INCOMPLETE는 Auth 인증 실패와 다르다. 로그인 세션을 유지하고 프로필 입력 단계를 표시한다.
