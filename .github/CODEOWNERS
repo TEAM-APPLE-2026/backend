@@ -1,0 +1,8 @@
+# 나중에 나온 규칙이 우선 적용됩니다.
+
+# supabase/ 전체: 지민님
+/supabase/ @zPHf25N
+
+# Edge Functions, seed 데이터: sominmn
+/supabase/functions/ @sominmn
+/supabase/seed.sql @sominmn
