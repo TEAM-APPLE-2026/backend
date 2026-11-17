@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 const root = new URL('../../', import.meta.url);
 export async function database() {
@@ -15,7 +15,7 @@ export async function database() {
     alter default privileges in schema public grant all on tables to anon,authenticated,service_role;
     alter default privileges in schema public grant all on functions to anon,authenticated,service_role;
   `);
-  for (const file of ['20261111010000_create_member_profiles.sql','20261117010000_create_reports.sql'])
+  for (const file of (await readdir(new URL('supabase/migrations/',root))).filter(f=>f.endsWith('.sql')).sort())
     await db.exec(await readFile(new URL(`supabase/migrations/${file}`, root),'utf8'));
   return { db, notices };
 }
