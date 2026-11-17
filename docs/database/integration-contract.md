@@ -221,3 +221,14 @@ BE1이 회원·프로필 mock을 만들 때 위 실제 범위를 먼저 맞추�
 - secondary_detail은 선택 필드이며, 미확인 null이 기본 6개 확인·확정을 막지 않는다. 알려지지 않은 통지일은 {from:null,to:null,precision:'unknown'}으로 표현할 수 있다.
 - 원문 변경 시 fields=[]로 초기화한 뒤 재분석한다. 동일 원문의 기존 AI 값·quote를 수정/누락하거나 확정 후 수정하면 CONFLICT다. 호출 예시·검증·배포 한계는 위 문서를 참고한다.
 - 로컬 PostgreSQL 및 JS 연동 검증과 실제 운영 Auth/PostgREST 검증은 다르다. 운영 이메일 인증·화면 연동 완료로 간주하지 않는다.
+
+## 10. 그룹·로펌·투표 후속 구현
+
+실제 구현과 운영 연결 조건은 [groups-firms-voting.md](../development/groups-firms-voting.md)를 따른다. 대표자 선거는 사용자 선택으로 10명 기준을 유지하며 개설자가 개시하고 지원자를 받아 투표한다. 목록·제안·투표·동의·공지·알림의 JS 함수는 src/data/client.mjs에 추가했다.
+
+- getMyProfile은 firm 계정이면 get_my_firm을 재조회해 실제 승인 상태를 반환한다.
+- setProposalDeadline/getMyFirm/listGroupEvents를 추가했다. 투표 요약에는 isFinalized를 추가해 마감과 집계 완료를 구분한다.
+- 참여자 목록의 cursor는 계정 ID를 노출하지 않도록 joined_at DESC,member_id DESC 기준이다. damageLevel은 현재 수집값이 없어 null이다.
+- 같은 사례의 확인된 기업명·privacy_leak 유형이 그룹과 일치하는지 서버에서 검사한다.
+- 탈퇴는 초기 모집 중 일반 참여자만, 재가입/개설자·대표자 탈퇴/투표 이후 탈퇴는 보류한다.
+- recommend_method의 법률 대응 추천 규칙은 미확정이므로 구현하지 않았다. Storage·NTS 실제 호출·Cron 등록·동의 문구 승인 및 프론트 화면 연결은 담당자와 별도 확인한다.

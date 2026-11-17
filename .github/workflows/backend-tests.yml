@@ -1,0 +1,31 @@
+name: Backend tests
+on:
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'package*.json'
+      - '.github/workflows/backend-tests.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'package*.json'
+      - '.github/workflows/backend-tests.yml'
+permissions:
+  contents: read
+jobs:
+  isolated-postgres-and-adapters:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm test
