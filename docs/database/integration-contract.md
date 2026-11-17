@@ -211,3 +211,13 @@ BE1은 backend/supabase/migrations에 Cron 등록 SQL을 작성해 1분마다 �
 | 로펌 신청·승인 | 아직 미구현 | mock 성공을 실제 서버 구현 완료로 표시하지 않음 |
 
 BE1이 회원·프로필 mock을 만들 때 위 실제 범위를 먼저 맞추고, 약관·로펌 mock은 후속 단계임을 표시한다. AI 새 secondary_detail과 firm-certs 경로는 이 수정본의 제안이므로 BE1 반영 확인이 필요하다.
+
+## 9. 2026-11-17 구현 추가: 회원 연동·피해 사례 저장
+
+실행 계약은 [report-storage.md](../development/report-storage.md)를 따른다. `src/data/client.mjs`가 Auth 및 회원·사례 RPC의 camelCase 변환과 공통 오류 응답을 제공한다. 약관·firm:null의 기존 제한은 유지한다.
+
+- saveReport → save_report(raw_text,fields,report_id=null), getReport → get_report(report_id)를 구현한다. 필드 JSON 내부의 aiValue/userValue/needsCheck는 그대로 유지한다.
+- 추가 finalizeReport → finalize_report(report_id): 기본 6개 필드 확인 후 명시적으로 확정하며, finalizedAt을 반환한다. getReport도 finalizedAt을 추가 반환한다. organized만으로 사용자 명시적 확정 완료라고 표시하지 않는다.
+- secondary_detail은 선택 필드이며, 미확인 null이 기본 6개 확인·확정을 막지 않는다. 알려지지 않은 통지일은 {from:null,to:null,precision:'unknown'}으로 표현할 수 있다.
+- 원문 변경 시 fields=[]로 초기화한 뒤 재분석한다. 동일 원문의 기존 AI 값·quote를 수정/누락하거나 확정 후 수정하면 CONFLICT다. 호출 예시·검증·배포 한계는 위 문서를 참고한다.
+- 로컬 PostgreSQL 및 JS 연동 검증과 실제 운영 Auth/PostgREST 검증은 다르다. 운영 이메일 인증·화면 연동 완료로 간주하지 않는다.
