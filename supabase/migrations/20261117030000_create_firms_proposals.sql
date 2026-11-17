@@ -109,7 +109,7 @@ begin
  if g.method is distinct from 'suit' or g.sub_status<>'proposal_collection' or g.proposal_deadline is null or g.proposal_deadline<=clock_timestamp() then
  raise exception using message='PROPOSAL_CLOSED',errcode='P0001';end if;
  insert into public.proposals(group_id,firm_id,retainer_fee,success_fee_pct,period,strategy,lawyer_count,lead_lawyer,firm_name_snapshot)
- select g.id,fid,($2->>'retainerFee')::numeric,($2->>'successFeePct')::numeric,$2->>'period',$2->>'strategy',($2->>'lawyerCount')::integer,$2->>'leadLawyer',f.firm_name from public.firms f where f.id=fid
+ select g.id,fid,($2->>'retainerFee')::numeric,($2->>'successFeePct')::numeric,$2->>'period',$2->>'strategy',($2->>'lawyerCount')::numeric::integer,$2->>'leadLawyer',f.firm_name from public.firms f where f.id=fid
  returning id into pid;return hande_private.proposal_json(pid);
 exception when unique_violation then raise exception using message='CONFLICT',errcode='P0001';end;$$;
 create function public.update_proposal(proposal_id uuid,proposal jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
@@ -121,7 +121,7 @@ begin
  select * into g from public.groups x where x.id=gid for update;
  if g.sub_status<>'proposal_collection' or g.proposal_deadline<=clock_timestamp() then raise exception using message='PROPOSAL_CLOSED',errcode='P0001';end if;
  update public.proposals p set retainer_fee=($2->>'retainerFee')::numeric,success_fee_pct=($2->>'successFeePct')::numeric,
- period=$2->>'period',strategy=$2->>'strategy',lawyer_count=($2->>'lawyerCount')::integer,lead_lawyer=$2->>'leadLawyer',
+ period=$2->>'period',strategy=$2->>'strategy',lawyer_count=($2->>'lawyerCount')::numeric::integer,lead_lawyer=$2->>'leadLawyer',
  status='submitted',submitted_at=clock_timestamp(),updated_at=clock_timestamp() where p.id=$1;
  return hande_private.proposal_json($1);
 end;$$;

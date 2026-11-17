@@ -22,7 +22,7 @@ alter table public.group_contact_consents enable row level security;alter table 
 revoke all on public.group_contact_consents,public.notices from public,anon,authenticated;
 grant select on public.group_contact_consents to authenticated;
 create policy consent_own on public.group_contact_consents for select to authenticated using(user_id=(select auth.uid()));
-create function hande_private.cursor_parts(value text)returns jsonb language plpgsql immutable set search_path=''as $$
+create function hande_private.cursor_parts(value text)returns jsonb language plpgsql stable set search_path=''as $$
 declare c jsonb;
 begin
  if $1 is null then return null;end if;
@@ -30,7 +30,7 @@ begin
  c:=convert_from(decode($1,'base64'),'UTF8')::jsonb;
  if(c->>'at')::timestamptz is null or(c->>'id')::uuid is null then raise exception 'invalid';end if;return c;
 exception when others then raise exception using message='INVALID_INPUT',errcode='P0001';end;$$;
-create function hande_private.encode_cursor(at_time timestamptz,item_id uuid)returns text language sql immutable set search_path=''as $$
+create function hande_private.encode_cursor(at_time timestamptz,item_id uuid)returns text language sql stable set search_path=''as $$
  select encode(convert_to(jsonb_build_object('at',$1,'id',$2)::text,'UTF8'),'base64')
 $$;
 create function public.get_group_members(group_id uuid,cursor text default null,"limit" integer default 20)returns jsonb language plpgsql stable security definer set search_path=''as $$

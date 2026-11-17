@@ -135,11 +135,11 @@ begin
  if not found then raise exception using message='NOT_FOUND',errcode='P0001';end if;
  caller:=hande_private.require_member(p.group_id);
  select coalesce(jsonb_agg(jsonb_build_object('option_id',v.id,'label',v.label,'vote_count',v.cnt)order by v.id),'[]'),coalesce(sum(v.cnt),0)
- into options,total from(select o.id,o.label,count(b.user_id)cnt from public.poll_options o left join public.ballots b on b.option_id=o.id and b.poll_id=o.poll_id where o.poll_id=$1 group by o.id,o.label)v;
+ into options,total from(select o.id,o.label,case when p.closed_at is not null then coalesce((select r.vote_count from public.poll_results r where r.poll_id=p.id and r.option_id=o.id),0)else(select count(*)from public.ballots b where b.poll_id=p.id and b.option_id=o.id)end cnt from public.poll_options o where o.poll_id=$1)v;
  select b.option_id into mine from public.ballots b where b.poll_id=$1 and b.user_id=caller;
  display_state:=case when p.state in ('scheduled','open')and statement_timestamp()>=p.closes_at then 'closed'when p.state='scheduled'and statement_timestamp()>=p.opens_at then 'open'else p.state end;
  return jsonb_build_object('poll_id',p.id,'kind',p.kind,'state',display_state,'opens_at',p.opens_at,'closes_at',p.closes_at,'server_time',statement_timestamp(),
- 'total_votes',total,'options',options,'my_option_id',mine,'winner_option_id',p.winner_option_id);
+ 'total_votes',total,'options',options,'my_option_id',mine,'winner_option_id',p.winner_option_id,'is_finalized',p.closed_at is not null);
 end;$$;
 create function public.close_vote(poll_id uuid)returns jsonb language plpgsql security definer set search_path='' as $$
 declare p public.polls%rowtype;gid uuid;total integer;top_count integer;ties integer;winner uuid;out_state text;counts jsonb;option_row public.poll_options%rowtype;valid_firm boolean;
@@ -206,9 +206,10 @@ begin
  select * into p from public.polls x where x.id=$1 and x.kind='firm';
  select o.proposal_id into pid from public.poll_options o join public.proposals pr on pr.id=o.proposal_id where o.poll_id=$1 and pr.firm_id=fid;
  if pid is null then raise exception using message='NOT_FOUND',errcode='P0001';end if;
- select count(*)into votes from public.ballots b join public.poll_options o on o.id=b.option_id where b.poll_id=$1 and o.proposal_id=pid;
- return jsonb_build_object('poll_id',$1,'state',case when p.state in ('scheduled','open')and statement_timestamp()>=p.closes_at then 'closed'else p.state end,
- 'closes_at',p.closes_at,'my_proposal_id',pid,'my_vote_count',votes);
+ if p.closed_at is not null then select coalesce(sum(r.vote_count),0)into votes from public.poll_results r join public.poll_options o on o.id=r.option_id where r.poll_id=$1 and o.proposal_id=pid;
+ else select count(*)into votes from public.ballots b join public.poll_options o on o.id=b.option_id where b.poll_id=$1 and o.proposal_id=pid;end if;
+ return jsonb_build_object('poll_id',$1,'state',case when p.state in ('scheduled','open')and statement_timestamp()>=p.closes_at then 'closed'when p.state='scheduled'and statement_timestamp()>=p.opens_at then 'open'else p.state end,
+ 'is_finalized',p.closed_at is not null,'closes_at',p.closes_at,'my_proposal_id',pid,'my_vote_count',votes);
 end;$$;
 revoke all on all functions in schema hande_private from public,anon,authenticated;
 revoke all on function public.open_poll(uuid,text,timestamptz,timestamptz),public.apply_representative(uuid),public.cast_representative_vote(uuid,uuid),public.cast_method_vote(uuid,text),public.cast_firm_vote(uuid,uuid),public.get_vote_summary(uuid),public.set_proposal_deadline(uuid,timestamptz),public.get_my_proposal_vote_summary(uuid),public.close_vote(uuid),public.close_due_votes(integer)from public,anon,authenticated;

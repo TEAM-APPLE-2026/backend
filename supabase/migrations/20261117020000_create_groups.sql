@@ -60,6 +60,11 @@ create function hande_private.group_json(gid uuid) returns jsonb language sql st
  'goal',g.goal,'deadline',g.deadline,'proposal_deadline',g.proposal_deadline,'method',g.method,'selected_firm_name',null)
  from public.groups g where g.id=$1
 $$;
+create function hande_private.report_matches(rid uuid,company_name text)returns boolean language sql stable security definer set search_path=''as $$
+ select exists(select 1 from public.report_fields c join public.report_fields t on t.report_id=c.report_id and t.key='type'
+ where c.report_id=$1 and c.key='company'and lower(btrim((case when c.source='user'then c.user_value else c.ai_value end)#>>'{}'))=lower(btrim($2))
+ and(case when t.source='user'then t.user_value else t.ai_value end)='"privacy_leak"'::jsonb)
+$$;
 create function public.create_group(report_id uuid,name text,company text,description text,conditions text default '',harm_type text default 'privacy_leak',
  period_start date default null,period_end date default null,required_evidence text[] default '{}',goal integer default null,deadline timestamptz default null)
 returns jsonb language plpgsql security definer set search_path='' as $$
@@ -73,6 +78,7 @@ begin
  or ($7 is not null and $8 is not null and $7>$8) or ($10 is not null and $10<=0) or($11 is not null and $11<=clock_timestamp())
  or $9 is null or cardinality($9)>20 or exists(select 1 from unnest($9) v where v is null or char_length(btrim(v)) not between 1 and 100) then
  raise exception using message='INVALID_INPUT',errcode='P0001';end if;
+ if not hande_private.report_matches(r.id,$3)then raise exception using message='NOT_ELIGIBLE',errcode='P0001';end if;
  insert into public.groups(name,company,description,conditions,harm_type,period_start,period_end,required_evidence,goal,deadline,created_by)
  values(btrim($2),btrim($3),btrim($4),$5,$6,$7,$8,$9,$10,$11,caller) returning id into gid;
  insert into public.group_members(group_id,user_id,report_id) values(gid,caller,r.id) returning joined_at into j;
@@ -93,6 +99,7 @@ begin
  select * into r from public.reports x where x.id=$2 and x.user_id=caller for update;
  if not found then raise exception using message='NOT_FOUND',errcode='P0001';end if;
  if r.finalized_at is null or r.status not in ('organized','submitted') then raise exception using message='NOT_ELIGIBLE',errcode='P0001';end if;
+ if not hande_private.report_matches(r.id,g.company)then raise exception using message='NOT_ELIGIBLE',errcode='P0001';end if;
  insert into public.group_members(group_id,user_id,report_id) values(g.id,caller,r.id) returning * into m;
  update public.reports set status='submitted',updated_at=clock_timestamp() where id=r.id;
  return jsonb_build_object('group_id',g.id,'is_rep',false,'joined_at',m.joined_at,'left_at',null);

@@ -39,3 +39,16 @@ test('Contacts: only selected approved firm sees consenting active members, revo
  assert.deepEqual(await actor(db,2,'select public.mark_notification_read($1)v',[note]),read);
  }finally{await db.close();}
 });
+test('Server-only actual connection and closure: private events, no automatic connection for non-suit methods',async()=>{
+ const{db}=await database();try{
+ await users(db,2);const gid=await group(db);
+ await db.query("update public.groups set method='med',status='connecting',sub_status='method_vote'where id=$1",[gid]);
+ await reject(actor(db,1,'select public.record_group_connection($1)v',[gid]),'permission denied for function record_group_connection');
+ await reject(actor(db,1,"select public.close_group($1,'done')v",[gid]),'permission denied for function close_group');
+ assert.equal((await db.query('select public.record_group_connection($1)v',[gid])).rows[0].v.status,'in_progress');
+ assert.equal((await db.query("select public.close_group($1,'Synthetic closure')v",[gid])).rows[0].v.status,'closed');
+ await db.query("select public.close_group($1,'retry')v",[gid]);
+ assert.equal((await actor(db,1,'select public.list_group_events($1)v',[gid])).items.length,2);
+ await reject(actor(db,2,'select public.list_group_events($1)v',[gid]),'FORBIDDEN');
+ }finally{await db.close();}
+});

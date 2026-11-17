@@ -13,6 +13,7 @@ async function elect(db){
  const option=summary.options.find(x=>x.label==='User 1').option_id;
  await reject(actor(db,1,'select public.cast_representative_vote($1,$2)v',[pid,option]),'POLL_NOT_OPEN');
  await live(db,pid);await actor(db,1,'select public.cast_representative_vote($1,$2)v',[pid,option]);
+ await actor(db,1,'select public.cast_representative_vote($1,$2)v',[pid,summary.options.find(x=>x.option_id!==option).option_id]);
  await actor(db,1,'select public.cast_representative_vote($1,$2)v',[pid,option]);
  assert.equal((await actor(db,2,'select public.get_vote_summary($1)v',[pid])).total_votes,1);
  await reject(actor(db,11,'select public.cast_representative_vote($1,$2)v',[pid,option]),'FORBIDDEN');
@@ -54,5 +55,18 @@ test('Ties and zero votes: no invented winner, new round for revote',async()=>{
  const next=await open(db,gid,'method');await due(db,next);const r=(await db.query('select public.close_vote($1)v',[next])).rows[0].v;
  assert.equal(r.state,'no_votes');assert.equal(r.winner_option_id,null);
  assert.equal((await db.query('select round_no from public.polls where id=$1',[next])).rows[0].round_no,2);
+ }finally{await db.close();}
+});
+test('Firm approval revoked before closing cancels selection instead of disclosing contacts',async()=>{
+ const{db}=await database();try{
+ const gid=await elect(db),fid=await firm(db,30);
+ await db.query("update public.firms set approval_status='approved',biz_status='active'where id=$1",[fid]);
+ await db.query("update public.groups set method='suit',sub_status='proposal_collection',proposal_deadline=now()+interval '1 day'where id=$1",[gid]);
+ const p=await actor(db,30,'select public.submit_proposal($1,$2::jsonb)v',[gid,JSON.stringify(proposal)]);
+ await db.query("update public.groups set proposal_deadline=now()-interval '1 second'where id=$1",[gid]);
+ const pid=await open(db,gid,'firm');await live(db,pid);await actor(db,1,'select public.cast_firm_vote($1,$2)v',[pid,p.id]);
+ await db.query("update public.firms set approval_status='rejected',reject_reason='Synthetic rejection'where id=$1",[fid]);
+ await due(db,pid);assert.equal((await db.query('select public.close_vote($1)v',[pid])).rows[0].v.state,'cancelled');
+ assert.equal((await db.query('select count(*)::int n from public.group_selections where group_id=$1',[gid])).rows[0].n,0);
  }finally{await db.close();}
 });

@@ -24,3 +24,13 @@ test('Groups: atomic creation, private report ownership, public projection, join
   await reject(actor(db,0,'select * from public.groups'),'permission denied for table groups');
  }finally{await db.close();}
 });
+test('Group scope: finalized report company/type must match the group',async()=>{
+ const{db}=await database();try{
+ await users(db,2);const rid=await report(db,1);
+ await reject(actor(db,1,"select public.create_group($1,'Mismatch','Different Co','Description')v",[rid]),'NOT_ELIGIBLE');
+ assert.equal((await db.query('select count(*)::int n from public.groups')).rows[0].n,0);
+ const gid=await group(db,2);
+ await db.query("update public.groups set company='Different Co'where id=$1",[gid]);
+ await reject(actor(db,1,'select public.join_group($1,$2)v',[gid,rid]),'NOT_ELIGIBLE');
+ }finally{await db.close();}
+});
