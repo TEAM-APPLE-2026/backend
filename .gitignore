@@ -6,3 +6,7 @@
 # Supabase CLI 로컬 상태
 supabase/.temp
 supabase/.branches
+
+# Node adapters and isolated SQL validation
+node_modules/
+coverage/
