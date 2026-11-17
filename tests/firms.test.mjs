@@ -24,3 +24,20 @@ test('Firms: certificate ownership, approval separation, proposals freeze and an
  try{await assert.rejects(db.exec("update public.firms set approval_status='approved'"),e=>e.code==='42501');}finally{await db.exec('rollback');}
  }finally{await db.close();}
 });
+test('Firm application rejects foreign certificate ownership, missing MIME and oversize metadata',async()=>{
+ const{db}=await database();try{
+ await firm(db,30);
+ await db.query('insert into auth.users(id,email)values($1,$2)',[uid(31),'certificate@example.invalid']);
+ await actor(db,31,"select public.complete_signup('firm','Certificate applicant')v");
+ const path=`${uid(31)}/11111111-1111-4111-8111-111111111111.pdf`;
+ await db.query('insert into storage.objects values($1,$2,$3,$4)',['firm-certs',path,uid(30),JSON.stringify({mimetype:'application/pdf',size:100})]);
+ const args=['Certificate applicant','0000000002',path,JSON.stringify([{name:'Synthetic',regNo:'TEST-2'}])];
+ const apply=()=>actor(db,31,'select public.create_firm_application($1,$2,$3,$4::jsonb)v',args);
+ await reject(apply(),'INVALID_INPUT');
+ await db.query("update storage.objects set owner_id=$1,metadata='{}'where name=$2",[uid(31),path]);
+ await reject(apply(),'INVALID_INPUT');
+ await db.query('update storage.objects set metadata=$1 where name=$2',[JSON.stringify({mimetype:'application/pdf',size:10000001}),path]);
+ await reject(apply(),'INVALID_INPUT');
+ assert.equal((await actor(db,31,'select public.get_my_firm()v')),null);
+ }finally{await db.close();}
+});
