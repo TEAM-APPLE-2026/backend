@@ -125,3 +125,21 @@ PGlite는 단일 연결이므로 다중 연결 경합/데드락을 실제 서버
 main 병합은 실제 DB 자동 배포일 수 있다. PR #6을 먼저 검토·병합한 뒤 후속 migration을 적용한다. 문제 발견 시 이미 적용된 migration을 수정하거나 테이블을 삭제하지 않고 새 보완 migration을 작성한다.
 
 검증 결과: 최종 로컬 테스트 16/16 통과(기존 회귀 + 그룹/로펌/전체 투표/동점/0표/승인 철회/동의 철회/권한). GitHub Actions도 동일한 격리 DB 테스트를 실행하도록 구성했다. 이 CI는 운영 Supabase 연결이나 배포를 수행하지 않는다.
+
+## 2026-11-23 개발 Supabase 검증
+
+- 대상은 `hande_dev` (`jnpbuulrmgdkzbiywjtd`), PostgreSQL 17이다. 운영 프로젝트와 이름·ID를 구분해 확인했다.
+- PR #6은 두 개발 계정의 실제 Auth 로그인, 서비스 프로필, 사례 저장/조회/확정 및 타인 접근 차단 hosted smoke를 사용자의 맥에서 통과한 뒤 병합했다. 운영 DB에도 `20261117010000` 이력이 반영된 것을 읽기 전용으로 확인했다.
+- PR #7 base는 main으로 변경하고 main을 작업 브랜치에 병합했다. PR #7 자체는 병합하지 않았다.
+- 개발 DB에는 `20261117020000`~`20261117050000` migration을 적용했다. 실행 환경에서 pooler 직접 연결이 거절되어 `db push`는 실행하지 못했고, CLI `db query --remote=<개발 ID>`의 HTTPS 경로로 원본 SQL과 migration 이력을 같은 트랜잭션에 반영했다. 기존 적용 SQL을 수정하거나 DB를 초기화하지 않았다.
+- `supabase/tests/hosted_groups_workflow.sql`은 실제 개발 DB에서 실행했다. 10명 대표자 선거, 중복 표 upsert, 비참여자 거절, 사용자 마감 거절, 서버 마감, 동점/0표/재투표, 소송 방법 선택, 로펌 신청·승인 경계·제안·선정, 익명 집계, 동의 전/후·철회·연락처 수정·미선정 로펌 접근, 공지·알림 읽음 및 익명 테이블 접근 거절을 검사했다.
+- 위 SQL은 가상 Auth 행, 가상 Storage **메타데이터**, 가상 동의 버전을 트랜잭션 안에서만 만들고 마지막에 ROLLBACK한다. 실제 파일 업로드나 실제 회원 가입 HTTP 테스트를 대체하지 않는다. 운영 DB에서 실행하지 않는다. CLI 응답의 PASS marker와 테스트 fixture 0건을 확인한다.
+
+개발 프로젝트에서 재실행하는 명령(CLI 3.x):
+
+```bash
+supabase db query --remote=jnpbuulrmgdkzbiywjtd \
+  --file supabase/tests/hosted_groups_workflow.sql --yes
+```
+
+이 검증은 DB 역할과 JWT claim을 설정한 SQL 검사다. PR #7 전체 흐름의 실제 Auth/PostgREST HTTP, 다중 연결 경합, Storage 바이트 업로드, NTS, Cron 예약 호출, 프론트 화면 통합은 완료로 표시하지 않는다. Cron 등록과 운영 동의문 활성화는 별도 담당자 작업으로 남긴다.
