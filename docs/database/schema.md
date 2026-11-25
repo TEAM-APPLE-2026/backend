@@ -50,6 +50,10 @@ UQ(user_id, document_key, version). 가입 약관/수집 안내 버전의 수락
 | biz_no | text UQ, 숫자 10자리 CHECK | 사업자번호. 숫자형 아님 |
 | biz_status | text CHECK unchecked/active/suspended/closed/unknown | 사업자 상태 |
 | biz_checked_at | timestamptz? | 신뢰된 국세청 조회 완료 시각 |
+| rep_name | text? 1~100자 | 대표자명. 새 신청 필수(2026-11-25 이전 행은 null) |
+| open_date | date? | 개업일자. 새 신청 필수(이전 행은 null) |
+| biz_valid | text CHECK unchecked/valid/invalid/unknown, 기본 unchecked | 국세청 진위확인 결과 |
+| biz_validated_at | timestamptz? | 진위확인 완료 시각 |
 | cert_path | text | 비공개 사업자등록증 경로 |
 | approval_status | text CHECK pending/approved/rejected, 기본 pending | 운영자 승인 |
 | reviewed_by | uuid? FK app_operators.user_id | 검토자 |
@@ -57,12 +61,12 @@ UQ(user_id, document_key, version). 가입 약관/수집 안내 버전의 수락
 | reject_reason | text? | rejected이면 필수 CHECK |
 | created_at, updated_at | timestamptz | 이력 |
 
-국세청 계속/휴업/폐업/조회불가를 active/suspended/closed/unknown으로 매핑한다. BE1 Edge Function이 검증한 본인 로펌의 biz_status·biz_checked_at만 service role로 갱신한다. approval_status는 운영자 승인으로 별도 관리하며 국세청 함수는 변경하지 않는다. owner 역할=firm 검사. 사업자 상태/승인 필드는 소유 로펌이 변경할 수 없다. 사업자번호·등록증·변호사 자격 정보 변경 시 재검토 필요 여부는 미정; 구현 전에는 승인된 계정의 해당 필드 직접 변경을 막는다.
+국세청 계속/휴업/폐업/조회불가를 active/suspended/closed/unknown으로 매핑한다. BE1 Edge Function이 검증한 본인 로펌의 biz_status·biz_checked_at만 service role로 갱신한다. approval_status는 운영자 승인으로 별도 관리한다. 개발 시연 예외로 hande_private.app_settings의 firm_auto_approve가 status/validate일 때만 try_auto_approve_firm이 pending→approved로 바꾼다(기본 off, permissions-and-rpc.md 7장). owner 역할=firm 검사. 사업자 상태/승인 필드는 소유 로펌이 변경할 수 없다. 사업자번호·등록증·변호사 자격 정보 변경 시 재검토 필요 여부는 미정; 구현 전에는 승인된 계정의 해당 필드 직접 변경을 막는다.
 
 ### firm_lawyers
 
 `id uuid PK`, `firm_id uuid FK firms.id`, `name text`, `reg_no text`, `created_at timestamptz`.
-UQ(firm_id, reg_no). 제안서 제출 시 최소 1명 존재 검사. 번호 입력 자체를 자격 확인 완료로 취급하지 않는다.
+UQ(firm_id, reg_no). 가입 시 선택 입력(0~20명). 담당 변호사는 proposals.lead_lawyer로 받는다. 번호 입력 자체를 자격 확인 완료로 취급하지 않는다.
 
 ## 2. 피해 사례와 증빙
 

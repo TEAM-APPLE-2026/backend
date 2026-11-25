@@ -42,8 +42,10 @@ type Time = string;
 type Page<T> = { items: T[]; nextCursor: string | null };
 type Profile = { id: Id; role: 'user' | 'firm'; nickname: string };
 type Firm = { id: Id; firmName: string;
+  repName: string | null; openDate: string | null; // 'YYYY-MM-DD'. 2026-11-25 이전 신청 행은 null
   approvalStatus: 'pending' | 'approved' | 'rejected';
   bizStatus: 'unchecked' | 'active' | 'suspended' | 'closed' | 'unknown';
+  bizValid: 'unchecked' | 'valid' | 'invalid' | 'unknown';
   rejectReason: string | null };
 type Group = { id: Id; name: string; company: string; harmType: 'privacy_leak';
   status: 'recruiting' | 'connecting' | 'in_progress' | 'closed';
@@ -78,7 +80,7 @@ Group은 공개용 허용 필드만 포함한다. 내 권한·참여 여부는 �
 | completeSignup → complete_signup | {role,nickname,realName,phone,terms:[{documentKey,version}]} | Profile | 일반 사용자 실명·연락처 필수; role은 user/firm만 |
 | getMyProfile → get_my_profile | {} | {profile:Profile,realName:string|null,phone:string|null,firm:Firm|null} | 본인; DB 승인 후 재조회 |
 | updatePrivateProfile → update_private_profile | {realName,phone} | {updatedAt:Time,requiresReconsent:boolean} | 본인; 기존 제공 동의 철회는 팀 확인할 기본안 |
-| createFirmApplication → create_firm_application | {firmName,bizNo,certPath,lawyers:[{name,regNo}]} | Firm | firm 역할; pending 초기화; 파일 소유권 확인 |
+| createFirmApplication → create_firm_application | {firmName,bizNo,certPath,repName,openDate:'YYYY-MM-DD',lawyers?:[{name,regNo}]} | Firm | firm 역할; pending 초기화; 파일 소유권 확인. lawyers 선택(기본 [], 0~20명). 담당 변호사는 제안서 leadLawyer |
 | saveReport → save_report | {reportId?:Id,rawText:string,fields:ReportField[]} | {reportId:Id,status:'draft'|'organized',updatedAt:Time} | 본인; 원문 1~2000자; source별 값 타입 검사 |
 | getReport → get_report | {reportId:Id} | {id:Id,rawText:string,status:string,fields:ReportField[],updatedAt:Time} | 작성자만 |
 | listGroups → list_groups | {company?:string,harmType?:'privacy_leak',status?:Group['status'],cursor?:string,limit?:number} | Page<Group> | 공개 조회; 원문·연락처 제외 |
@@ -171,8 +173,8 @@ AI 추천 점수·근거는 권한/참여 자격의 근거가 아니며 브라�
 | --- | --- | --- |
 | 계정 역할 | profiles.role=user/firm | BE2 가입 완료 RPC; 운영자 승격 불가 |
 | 대표자 | group_members.is_rep, 활성 그룹별 최대 1명 | BE2 선거 결과만 변경 |
-| 로펌 승인 | firms.approval_status=pending/approved/rejected | 운영자 DB 승인, 프론트 재조회 |
-| 사업자 상태 | firms.biz_status와 biz_checked_at | BE1 nts-verify Edge Function이 본인 로펌 검증 후 직접 갱신; 별도 DB RPC 추가하지 않음 |
+| 로펌 승인 | firms.approval_status=pending/approved/rejected | 운영: 운영자 DB 수동 승인. 개발 시연: firm_auto_approve 설정 시 nts-verify 후 자동 승인(permissions-and-rpc.md 7장). 프론트 재조회 |
+| 사업자 상태 | firms.biz_status·biz_checked_at, biz_valid·biz_validated_at | BE1 nts-verify Edge Function이 본인 로펌 검증 후 상태조회·진위확인 결과를 갱신; 사용자용 갱신 RPC 없음 |
 | 파일 | evidences.bucket_id/object_path/status 등 | 비공개 evidences·firm-certs 버킷 제안 반영; 등록증 경로는 아래와 같이 별도 구분 |
 | 파일 접근 | 사례 작성자만 기본 허용, 로펌 원본은 별도 정책 확정 전 차단 | Storage 정책과 DB 권한 함께 검증 |
 | 자동 마감 | polls.closes_at + 서버 close_vote | BE2 원자적 집계, BE1 Cron 설정; 대표자가 기간 지정 |
@@ -240,5 +242,14 @@ BE1이 회원·프로필 mock을 만들 때 위 실제 범위를 먼저 맞추�
 - createEvidenceUpload → create_evidence_upload(report_id,kind,original_name,mime_type,size_bytes): 본인 사례, pending 행과 서버 생성 objectPath 반환.
 - confirmEvidence → Edge Function evidence-confirm: 실제 객체 크기·파일 서명 확인 뒤 ready/failed. 클라이언트는 ready를 지정할 수 없다.
 - deleteEvidence → delete_evidence(evidence_id) 후 Storage 객체 삭제. objectRemoved=false면 재시도.
-- verifyBusiness → Edge Function nts-verify: DB biz_no로 조회, biz_status·biz_checked_at만 갱신. 네트워크 실패는 기존 값 유지 + NETWORK_ERROR.
+- verifyBusiness → Edge Function nts-verify: DB biz_no로 조회, biz_status·biz_checked_at만 갱신. 네트워크 실패는 기존 값 유지 + NETWORK_ERROR. (12장에서 진위확인·자동 승인 추가)
 - 증빙은 사례당 최대 10개(pending/ready/failed 합계), kind는 notice/smishing/payment/other. 로펌 원본 공개는 차단하고 익명 집계만 제공한다. 제출된 사례의 ready 증빙은 삭제할 수 없다. pending 자동 정리·signed URL API는 후속 과제다.
+
+## 12. 2026-11-25 변경: 로펌 가입 입력·국세청 진위확인·개발 시연 자동 승인
+
+팀 합의(로펌 가입에서 변호사 이름·등록번호 삭제, 담당 변호사는 제안서 leadLawyer 유지, 사업자 확인과 승인 구분)를 migration `20261125030000_firm_auto_verify.sql`로 반영했다. 상세는 [firm-auto-verify.md](../development/firm-auto-verify.md).
+
+- createFirmApplication: repName(대표자명)·openDate(개업일자 'YYYY-MM-DD') 필수, lawyers 선택(기본 [], 0~20명). 기존 4인자 RPC는 제거했다. 데이터 모듈을 통해 호출하면 된다.
+- verifyBusiness 응답: `{firmId,bizStatus,bizCheckedAt,bizValid,bizValidatedAt,approvalStatus}`. 한쪽 조회만 실패하면 성공 응답에 그 항목의 이전 값이 들어 있다(시각으로 구분). 둘 다 실패하면 NETWORK_ERROR.
+- getMyFirm/getMyProfile.firm에 repName·openDate·bizValid가 추가된다.
+- 승인: 운영은 수동 승인 유지. 개발 프로젝트에서만 firm_auto_approve=status|validate로 자동 승인 시연 가능. 기본 off.
