@@ -241,4 +241,4 @@ BE1이 회원·프로필 mock을 만들 때 위 실제 범위를 먼저 맞추�
 - confirmEvidence → Edge Function evidence-confirm: 실제 객체 크기·파일 서명 확인 뒤 ready/failed. 클라이언트는 ready를 지정할 수 없다.
 - deleteEvidence → delete_evidence(evidence_id) 후 Storage 객체 삭제. objectRemoved=false면 재시도.
 - verifyBusiness → Edge Function nts-verify: DB biz_no로 조회, biz_status·biz_checked_at만 갱신. 네트워크 실패는 기존 값 유지 + NETWORK_ERROR.
-- 증빙 최대 개수·kind 목록·로펌 원본 공개·signed URL API는 미정이다.
+- 증빙은 사례당 최대 10개(pending/ready/failed 합계), kind는 notice/smishing/payment/other. 로펌 원본 공개는 차단하고 익명 집계만 제공한다. 제출된 사례의 ready 증빙은 삭제할 수 없다. pending 자동 정리·signed URL API는 후속 과제다.

@@ -7,7 +7,7 @@ const RLS='new row violates row-level security policy for table "objects"';
 const png=n=>{const b=new Uint8Array(n);b.set([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]);return b;};
 const upload=(db,n,bucket,name)=>actor(db,n,"insert into storage.objects(bucket_id,name,owner_id,metadata) values($1,$2,$3,'{}') returning 1 v",[bucket,name,uid(n)]);
 const count=(db,n,sql,args)=>actor(db,n,`with x as (${sql} returning 1) select count(*)::int v from x`,args);
-const register=(db,n,reportId,over={})=>{const a={kind:'screenshot',name:'capture.PNG',mime:'image/png',size:16,...over};
+const register=(db,n,reportId,over={})=>{const a={kind:'notice',name:'capture.PNG',mime:'image/png',size:16,...over};
  return actor(db,n,'select public.create_evidence_upload($1,$2,$3,$4,$5) v',[reportId,a.kind,a.name,a.mime,a.size]);};
 
 test('Storage buckets are private with 10,000,000 bytes and JPEG/PNG/PDF only',async()=>{
@@ -24,7 +24,7 @@ test('Evidence registration: own report only, server path, strict metadata',asyn
  const e=await register(db,1,r1);
  assert.equal(e.status,'pending');assert.equal(e.object_path,`${uid(1)}/${r1}/${e.evidence_id}.png`);assert.equal(e.original_name,'capture.PNG');
  await reject(register(db,2,r1),'NOT_FOUND');
- await reject(actor(db,0,'select public.create_evidence_upload($1,$2,$3,$4,$5) v',[r1,'screenshot','a.png','image/png',1]),'permission denied for function create_evidence_upload');
+ await reject(actor(db,0,'select public.create_evidence_upload($1,$2,$3,$4,$5) v',[r1,'notice','a.png','image/png',1]),'permission denied for function create_evidence_upload');
  for(const over of [{mime:'image/gif',name:'a.gif'},{size:10000001},{size:0},{name:'a.pdf'},{name:'../x.png'},{name:' '},{kind:'Bad Kind'},{name:'a.jpeg',mime:'image/png'}])
   await reject(register(db,1,r1,over),'INVALID_INPUT');
  assert.equal((await register(db,1,r1,{name:'photo.jpeg',mime:'image/jpeg'})).object_path.endsWith('.jpg'),true);
@@ -102,5 +102,25 @@ test('evidence-confirm: owner pending row → ready only when real size/signatur
  // Service role: only status/uploaded_at, only pending → ready/failed.
  assert.equal((await admin.from('evidences').update({size_bytes:1}).eq('id',good.evidence_id).select('id').maybeSingle()).error.code,'42501');
  assert.equal((await admin.from('evidences').update({status:'pending'}).eq('id',good.evidence_id).select('id').maybeSingle()).error.message,'CONFLICT');
+ }finally{await db.close();}
+});
+
+
+test('Evidence policy: four kinds only, ten rows, submitted ready immutable',async()=>{
+ const {db}=await database();try{
+ await users(db,2); const r=await report(db,1);
+ await reject(register(db,1,r,{kind:'screenshot'}),'INVALID_INPUT');
+ for(const kind of ['notice','smishing','payment','other']) assert.equal((await register(db,1,r,{kind})).kind,kind);
+ for(let i=4;i<10;i++) await register(db,1,r);
+ await reject(register(db,1,r),'CONFLICT');
+ const e=(await db.query('select id from public.evidences where report_id=$1 limit 1',[r])).rows[0];
+ await actor(db,1,'select public.delete_evidence($1) v',[e.id]);
+ const ready=await register(db,1,r);
+ await db.query("update public.evidences set status='ready' where id=$1",[ready.evidence_id]);
+ await actor(db,1,"select public.create_group($1,'Policy group','Example Co','Synthetic') v",[r]);
+ await reject(actor(db,1,'select public.delete_evidence($1) v',[ready.evidence_id]),'CONFLICT');
+ const pending=(await db.query("select id from public.evidences where report_id=$1 and status='pending' limit 1",[r])).rows[0];
+ await actor(db,1,'select public.delete_evidence($1) v',[pending.id]);
+ assert.equal((await db.query('select status from public.evidences where id=$1',[ready.evidence_id])).rows[0].status,'ready');
  }finally{await db.close();}
 });

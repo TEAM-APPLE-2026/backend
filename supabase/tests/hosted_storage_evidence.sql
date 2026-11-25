@@ -23,12 +23,12 @@ end loop;
 end $$;
 
 select pg_temp.use_user(1);
-select set_config('test.path',public.create_evidence_upload(pg_temp.v('report1')::uuid,'screenshot','a.png','image/png',16)->>'object_path',true);
+select set_config('test.path',public.create_evidence_upload(pg_temp.v('report1')::uuid,'notice','a.png','image/png',16)->>'object_path',true);
 select set_config('test.eid',(select id::text from public.evidences where object_path=pg_temp.v('path')),true);
 select pg_temp.ok(pg_temp.v('path')=pg_temp.uid(1)::text||'/'||pg_temp.v('report1')||'/'||pg_temp.v('eid')||'.png','server path');
 select pg_temp.rejects($q$update public.evidences set status='ready'$q$,'42501');
 select pg_temp.use_user(2);
-select pg_temp.rejects($q$select public.create_evidence_upload(pg_temp.v('report1')::uuid,'screenshot','a.png','image/png',16)$q$,'NOT_FOUND');
+select pg_temp.rejects($q$select public.create_evidence_upload(pg_temp.v('report1')::uuid,'notice','a.png','image/png',16)$q$,'NOT_FOUND');
 select pg_temp.rejects($q$insert into storage.objects(bucket_id,name,owner_id,metadata) values('evidences',pg_temp.v('path'),pg_temp.uid(2)::text,'{}')$q$,'42501');
 select pg_temp.use_user(30);
 select pg_temp.rejects($q$insert into storage.objects(bucket_id,name,owner_id,metadata) values('evidences',pg_temp.v('path'),pg_temp.uid(30)::text,'{}')$q$,'42501');
@@ -48,6 +48,27 @@ select pg_temp.use_user(1);
 select pg_temp.ok((select count(*)=0 from storage.objects where bucket_id='firm-certs'),'user reads no certificate');
 select pg_temp.rejects($q$insert into storage.objects(bucket_id,name,owner_id,metadata) values('firm-certs',pg_temp.uid(1)::text||'/22222222-2222-4222-8222-222222222222.pdf',pg_temp.uid(1)::text,'{}')$q$,'42501');
 select pg_temp.ok((public.delete_evidence(pg_temp.v('eid')::uuid)->>'object_path')=pg_temp.v('path'),'own delete');
+-- Agreed policy: enum and ten rows; submitted ready files cannot be deleted.
+select pg_temp.rejects($q$select public.create_evidence_upload(pg_temp.v('report1')::uuid,'screenshot','a.png','image/png',16)$q$,'INVALID_INPUT');
+do $$ declare n integer; e jsonb; begin
+ for n in 1..10 loop
+  e:=public.create_evidence_upload(pg_temp.v('report1')::uuid,'notice','a.png','image/png',16);
+  if n=1 then perform set_config('test.ready_id',e->>'evidence_id',true);end if;
+  if n=2 then perform set_config('test.pending_id',e->>'evidence_id',true);end if;
+ end loop;
+end $$;
+select pg_temp.rejects($q$select public.create_evidence_upload(pg_temp.v('report1')::uuid,'other','a.png','image/png',16)$q$,'CONFLICT');
+reset role;
+set local role service_role;
+update public.evidences set status='ready' where id=pg_temp.v('ready_id')::uuid;
+reset role;
+set local role authenticated;
+select pg_temp.use_user(1);
+select public.finalize_report(pg_temp.v('report1')::uuid);
+select public.create_group(pg_temp.v('report1')::uuid,'Synthetic policy group','Hosted Synthetic Co','Synthetic test only');
+select pg_temp.rejects($q$select public.delete_evidence(pg_temp.v('ready_id')::uuid)$q$,'CONFLICT');
+select public.delete_evidence(pg_temp.v('pending_id')::uuid);
+select pg_temp.ok((select count(*)=1 from public.evidences where id=pg_temp.v('ready_id')::uuid and status='ready'),'submitted ready preserved');
 reset role;
 -- Service role: status/uploaded_at only (column privileges).
 select pg_temp.ok(not has_column_privilege('service_role','public.evidences','size_bytes','UPDATE') and has_column_privilege('service_role','public.evidences','status','UPDATE'),'service role evidences columns');

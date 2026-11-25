@@ -25,14 +25,14 @@
 | 삭제(DELETE) | 본인 경로 + 본인 사례 + DB 행이 **없을 때만** (행 먼저 삭제) | 본인 경로, 로펌 신청에 쓰인 등록증은 삭제 불가 |
 | 덮어쓰기(UPDATE) | 정책 없음 — `upsert: true` 불가 | 정책 없음 |
 
-다른 사용자·로펌은 증빙 원본을 읽을 수 없다(로펌 공개 정책 확정 전 기본 차단).
+다른 사용자·로펌은 증빙 원본을 읽을 수 없다. 로펌에는 익명 보유율 집계만 제공한다.
 
 ## 증빙 업로드 순서
 
 ```js
 // 1) pending 행 생성 + 업로드 경로 발급 (본인 사례만)
 const reg = await api.createEvidenceUpload({
-  reportId, kind: 'screenshot', originalName: file.name, mimeType: file.type, sizeBytes: file.size,
+  reportId, kind: 'notice', originalName: file.name, mimeType: file.type, sizeBytes: file.size,
 });
 if (reg.error) return reg;
 
@@ -46,7 +46,8 @@ const confirmed = await api.confirmEvidence({ evidenceId: reg.data.evidenceId })
 // CONFLICT: 아직 객체가 없음 → 업로드 후 재시도. pending 상태는 유지된다.
 ```
 
-- `kind`는 소문자·숫자·`_` 1~50자. 종류 목록은 아직 미정이라 형식만 검사한다.
+- `kind`는 `notice`·`smishing`·`payment`·`other` 중 하나다.
+- 사례당 최대 10개 행(pending/ready/failed 합계)을 허용한다. 실패 행을 삭제하면 다시 등록할 수 있다. 사례 행 잠금으로 동시 요청의 제한 초과를 막는다.
 - `originalName` 확장자가 MIME과 맞아야 한다(jpeg는 `.jpg`/`.jpeg`). `/`, `\`, 제어문자 불가.
 - 클라이언트는 `status`를 직접 바꿀 수 없다(`evidences` UPDATE 권한 없음). `ready`는 `evidence-confirm`만 설정한다.
 - 집계(`get_group_stats`)는 `ready`만 센다. pending/failed는 제외된다.
@@ -104,9 +105,12 @@ npx supabase secrets set NTS_SERVICE_KEY=<Decoding 키> --project-ref jnpbuulrmg
 
 운영 프로젝트에는 적용하지 않는다. main 병합 시 운영 DB에 자동 반영될 수 있으므로 검토 후 병합한다.
 
-## 남은 결정
+## 확정 정책 (PR #8 리뷰)
 
-- 사례당 증빙 최대 개수, `kind` 목록.
-- 로펌에 증빙 원본을 공개하는 정책(현재 차단), signed URL 발급 API.
-- 오래된 pending 행·orphan 객체 정리 배치.
-- 제출된 사례의 ready 증빙 삭제 허용 여부(현재 본인이면 허용).
+후속 migration `20261125020000_enforce_evidence_policy.sql`에 반영한다. 이미 개발 DB에 적용한 최초 migration은 변경하지 않는다.
+
+- 사례당 10개, `notice`·`smishing`·`payment`·`other`.
+- 로펌 원본 공개 차단, 보유율 집계만 제공.
+- 제출(`reports.status='submitted'`) 후 `ready` 증빙 삭제는 `CONFLICT`. 제출 전에는 삭제 가능하며, 제출 후에도 pending/failed 정리는 허용한다.
+- 오래된 pending 자동 정리와 signed URL API는 후속 과제다. 실패 시 삭제·재시도는 현재 지원한다.
+- 운영 Cron 등록은 이번 변경에 포함하지 않는다.
