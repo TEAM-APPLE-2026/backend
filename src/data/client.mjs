@@ -8,6 +8,11 @@ function projection(value) {
 }
 // Inject an initialized @supabase/supabase-js client. No service-role key belongs here.
 const messages = {
+  INVALID_EMAIL: '이메일 주소를 확인해 주세요. 인증 메일을 받을 수 있는 주소가 필요합니다.',
+  AUTH_RATE_LIMIT: '인증 요청 또는 인증 메일 전송 횟수가 제한됐습니다. 반복 요청을 멈추고 나중에 다시 시도해 주세요.',
+  WEAK_PASSWORD: '비밀번호가 보안 조건을 충족하지 않습니다. 더 긴 비밀번호를 사용해 주세요.',
+  ACCOUNT_EXISTS: '이미 등록된 계정입니다. 로그인해 주세요.',
+  EMAIL_SIGNUP_DISABLED: '현재 이메일 가입이 비활성화되어 있습니다. 개발 프로젝트 설정을 확인해 주세요.',
   AUTH_REQUIRED: '로그인이 필요합니다.', LOGIN_FAILED: '이메일과 비밀번호를 확인해 주세요.',
   PROFILE_INCOMPLETE: '프로필 입력을 완료해 주세요.', FORBIDDEN: '접근 권한이 없습니다.',
   NOT_FOUND: '사례를 찾을 수 없습니다.', INVALID_INPUT: '입력값을 확인해 주세요.',
@@ -19,6 +24,11 @@ const messages = {
 };
 const failure = code => ({ error: { code, message: messages[code] } });
 function mapError(error, login = false) {
+  if (['email_address_invalid', 'email_address_not_authorized'].includes(error?.code)) return failure('INVALID_EMAIL');
+  if (['over_email_send_rate_limit', 'over_request_rate_limit'].includes(error?.code) || error?.status === 429) return failure('AUTH_RATE_LIMIT');
+  if (error?.code === 'weak_password') return failure('WEAK_PASSWORD');
+  if (['user_already_exists', 'email_exists'].includes(error?.code)) return failure('ACCOUNT_EXISTS');
+  if (error?.code === 'signup_disabled') return failure('EMAIL_SIGNUP_DISABLED');
   if (error?.name === 'AuthRetryableFetchError' || error instanceof TypeError)
     return failure('NETWORK_ERROR');
   if (login && ['invalid_credentials', 'email_not_confirmed'].includes(error?.code))
