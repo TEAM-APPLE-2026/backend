@@ -79,10 +79,10 @@ insert into storage.buckets(id,name,public) values('firm-certs','firm-certs',fal
 insert into storage.objects(bucket_id,name,owner_id,metadata) select 'firm-certs',pg_temp.uid(n)::text||'/11111111-1111-4111-8111-111111111111.pdf',pg_temp.uid(n)::text,'{"mimetype":"application/pdf","size":100}'::jsonb from (values(30),(31))x(n);
 set local role authenticated;
 select pg_temp.use_user(30);
-select set_config('test.firm30',public.create_firm_application('Hosted Firm 30','0000000030',pg_temp.uid(30)::text||'/11111111-1111-4111-8111-111111111111.pdf','[{"name":"Synthetic Lawyer","regNo":"TEST-30"}]')->>'id',true);
+select set_config('test.firm30',public.create_firm_application('Hosted Firm 30','0000000030',pg_temp.uid(30)::text||'/11111111-1111-4111-8111-111111111111.pdf','Synthetic Rep','2020-01-02','[{"name":"Synthetic Lawyer","regNo":"TEST-30"}]')->>'id',true);
 select pg_temp.rejects($q$select public.submit_proposal(pg_temp.v('gid'),'{"retainerFee":10000,"successFeePct":10,"period":"6 months","strategy":"Synthetic plan","lawyerCount":1,"leadLawyer":"Synthetic"}')$q$,'FIRM_NOT_APPROVED');
 select pg_temp.use_user(31);
-select set_config('test.firm31',public.create_firm_application('Hosted Firm 31','0000000031',pg_temp.uid(31)::text||'/11111111-1111-4111-8111-111111111111.pdf','[{"name":"Synthetic Lawyer","regNo":"TEST-31"}]')->>'id',true);
+select set_config('test.firm31',public.create_firm_application('Hosted Firm 31','0000000031',pg_temp.uid(31)::text||'/11111111-1111-4111-8111-111111111111.pdf','Synthetic Rep','2020-01-02','[{"name":"Synthetic Lawyer","regNo":"TEST-31"}]')->>'id',true);
 reset role;
 update public.firms set approval_status='approved',biz_status='active'where id in(pg_temp.v('firm30'),pg_temp.v('firm31'));
 set local role authenticated;

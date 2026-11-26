@@ -72,6 +72,8 @@ const del = await api.deleteEvidence({ evidenceId });
 
 ## nts-verify (7장)
 
+> 2026-11-25: 진위확인(validate)·자동 승인 시도·응답 확장은 [firm-auto-verify.md](firm-auto-verify.md)를 따른다. 아래는 상태조회 부분이다.
+
 ```js
 const r = await api.verifyBusiness();            // 또는 { bizNo } / { firmId } 를 일치 확인용으로 전달
 // r.data = { firmId, bizStatus: 'active'|'suspended'|'closed'|'unknown', bizCheckedAt }

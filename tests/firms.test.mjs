@@ -31,8 +31,8 @@ test('Firm application rejects foreign certificate ownership, missing MIME and o
  await actor(db,31,"select public.complete_signup('firm','Certificate applicant')v");
  const path=`${uid(31)}/11111111-1111-4111-8111-111111111111.pdf`;
  await db.query('insert into storage.objects values($1,$2,$3,$4)',['firm-certs',path,uid(30),JSON.stringify({mimetype:'application/pdf',size:100})]);
- const args=['Certificate applicant','0000000002',path,JSON.stringify([{name:'Synthetic',regNo:'TEST-2'}])];
- const apply=()=>actor(db,31,'select public.create_firm_application($1,$2,$3,$4::jsonb)v',args);
+ const args=['Certificate applicant','0000000002',path,'Synthetic Rep','2020-01-02',JSON.stringify([{name:'Synthetic',regNo:'TEST-2'}])];
+ const apply=()=>actor(db,31,'select public.create_firm_application($1,$2,$3,$4,$5,$6::jsonb)v',args);
  await reject(apply(),'INVALID_INPUT');
  await db.query("update storage.objects set owner_id=$1,metadata='{}'where name=$2",[uid(31),path]);
  await reject(apply(),'INVALID_INPUT');

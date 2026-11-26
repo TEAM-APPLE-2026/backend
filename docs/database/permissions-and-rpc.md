@@ -106,8 +106,37 @@ non-suit 분쟁조정 결정 후 연결 완료를 누가 확인하는지, 종결
 - 프로필 연락처 수정 RPC는 변경값 검증 후 기존 유효 제공 동의를 철회하는 기본안을 제안한다. 새 값 제공은 재동의. 동의 문구 버전/철회 이력을 보존한다.
 - 서비스 키/NTS 키는 브라우저나 저장소에 넣지 않는다. RLS 우회 키를 FE 연결에 사용하지 않는다.
 
-## 7. 국세청 Edge Function 신뢰 경계
+## 7. 국세청 Edge Function 신뢰 경계와 로펌 승인
 
-BE1의 nts-verify가 로그인 JWT를 검증하고 profiles.role=firm 및 firms.owner_id=auth.uid()를 확인한 뒤, DB에 저장된 biz_no로 국세청을 조회한다. body의 firm_id/biz_no와 불일치하면 거절한다. 계속/휴업/폐업/조회 불가를 active/suspended/closed/unknown으로 변환하고 biz_status·biz_checked_at만 service role로 갱신한다. approval_status/reviewed_by/reviewed_at 등 운영자 승인 필드는 변경하지 않는다. unchecked는 아직 조회하지 않은 상태로 남긴다.
+사업자 확인과 로펌 승인은 별개다. 국세청 결과(biz_status·biz_valid)는 승인 판단 자료일 뿐이며, approval_status는 아래 7.2의 운영 기준으로 정한다.
 
-국세청 응답이 없는 네트워크 실패는 기존 확인 결과와 biz_checked_at을 유지하고 오류로 반환하는 기본안이다. 유효한 조회 불가 응답은 unknown으로 저장한다. 비동기 조회 도중 사업자번호가 바뀌는 경우를 대비해 UPDATE에서 id/owner_id/biz_no를 모두 비교하고 매칭된 행이 없으면 CONFLICT 처리한다. 관리 키는 서버 내부에만 보관하고 임의 테이블/컬럼/상태를 요청으로 받지 않는다. 별도 상태 갱신 RPC는 이번에 추가하지 않는다. firms 구현이 선행되어야 실제 연결 가능하다.
+### 7.1 공통: nts-verify 신뢰 경계
+
+BE1의 nts-verify가 로그인 JWT를 검증하고 profiles.role=firm 및 firms.owner_id=auth.uid()를 확인한 뒤, **DB에 저장된** biz_no·rep_name·open_date·firm_name으로 국세청을 조회한다. body의 firmId/bizNo는 일치 확인용이며 불일치하면 각각 FORBIDDEN/CONFLICT로 거절하고 국세청을 호출하지 않는다.
+
+- 상태조회(status): 계속/휴업/폐업/조회 불가 → active/suspended/closed/unknown. biz_status·biz_checked_at 갱신.
+- 진위확인(validate): b_no, start_dt=open_date(YYYYMMDD), p_nm=rep_name, b_nm=firm_name. valid 01 → valid, 02 → invalid, 그 밖의 유효 응답 → unknown. biz_valid·biz_validated_at 갱신. rep_name/open_date가 없는 기존 행은 진위확인을 건너뛴다.
+- 두 조회는 각각 처리한다. 실패한 쪽은 기존 값과 시각을 유지하고, 둘 다 실패하면 아무것도 쓰지 않고 NETWORK_ERROR. unchecked는 아직 조회하지 않은 상태다.
+- service role은 firms에서 biz_status·biz_checked_at·biz_valid·biz_validated_at만 UPDATE할 수 있다. UPDATE는 id/owner_id/biz_no를 모두 비교하고 매칭 행이 없으면 CONFLICT. approval_status·reviewed_at·reject_reason 컬럼 권한은 없다.
+- 조회 후 `try_auto_approve_firm(firm_id)`를 호출하고 응답에 bizStatus·bizValid·approvalStatus를 포함한다. 관리 키는 서버 내부에만 보관하고 임의 테이블/컬럼/상태를 요청으로 받지 않는다.
+
+### 7.2 운영 기준: 수동 승인
+
+- 운영 프로젝트는 `hande_private.app_settings`의 `firm_auto_approve='off'`(기본값)를 유지한다. off이면 try_auto_approve_firm은 아무것도 바꾸지 않는다.
+- 운영자가 DB 관리자 경로에서 등록증·국세청 결과를 검토하고 approval_status(approved/rejected)·reviewed_at·reject_reason을 직접 기록한다. rejected에는 사유가 필수다.
+- 클라이언트·로펌 계정은 설정과 승인 필드를 읽거나 바꿀 수 없다. 사용자에게 승인 RPC를 노출하지 않는다.
+
+### 7.3 개발 시연 예외: firm_auto_approve 설정
+
+개발 프로젝트(hande_dev)에서만 시연 편의를 위해 DB 관리자가 설정값을 바꾼다. 실행 SQL은 `supabase/operations/dev-firm-auto-approve.sql`이며 자동 배포하지 않는다.
+
+| 값 | 자동 승인 조건 (pending → approved만) |
+| --- | --- |
+| off (기본) | 없음. 수동 승인 |
+| validate | biz_valid='valid' 그리고 biz_status='active' |
+| status | biz_status='active' |
+
+- `hande_private.try_auto_approve_firm`은 SECURITY DEFINER, 빈 search_path. 실행 권한은 service_role만 있다. hande_private는 API에 노출되지 않으므로 Edge Function은 service_role 전용 래퍼 `public.try_auto_approve_firm`을 RPC로 호출한다. 본인 확인은 호출 전에 nts-verify가 한다.
+- pending만 approved로 바꾼다. rejected와 approved는 어떤 값에서도 바꾸지 않는다(이후 국세청 결과가 나빠져도 자동 취소하지 않으며 운영자가 판단한다). 승인 시 reviewed_at을 기록하고 기존 firm_reviewed 알림이 생성된다.
+- 설정 행이 없거나 알 수 없는 값이면 off로 동작한다. 허용값 외 저장은 CHECK로 막는다.
+- app_settings는 anon/authenticated/service_role 모두 권한이 없다.
