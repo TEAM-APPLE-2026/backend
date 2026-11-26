@@ -10,3 +10,6 @@ supabase/.branches
 # Node adapters and isolated SQL validation
 node_modules/
 coverage/
+
+# 시연 시드 계정·비밀번호·일회성 정리 SQL (로컬 전용)
+.local/
