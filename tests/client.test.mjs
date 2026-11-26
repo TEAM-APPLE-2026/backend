@@ -78,13 +78,14 @@ test('Workflow adapters: anonymous public reads, nested snake_case mapping and f
    const data={
     get_my_profile:{profile:{id:'firm-user',role:'firm',nickname:'Firm'},real_name:null,phone:null},
     get_my_firm:{id:'firm',firm_name:'Synthetic firm',approval_status:'pending',biz_status:'unchecked',reject_reason:null},
-    get_vote_summary:{poll_id:'poll',options:[{option_id:'option',vote_count:2}],my_option_id:'option',winner_option_id:null},
+    get_vote_summary:{poll_id:'poll',options:[{option_id:'option',label:'Firm',vote_count:2,proposal_id:'proposal',method_code:null,candidate_user_id:null}],my_option_id:'option',winner_option_id:null},
     save_report:{report_id:'report',status:'draft',updated_at:'time'},
    }[name];return{data,error:null};
   }});
  assert.equal((await client.getMyProfile()).data.firm.approvalStatus,'pending');
  const summary=(await client.getVoteSummary({pollId:'poll'})).data;
  assert.equal(summary.options[0].voteCount,2);assert.equal(summary.myOptionId,'option');
+ assert.deepEqual(summary.options[0],{optionId:'option',label:'Firm',voteCount:2,proposalId:'proposal',methodCode:null,candidateUserId:null});
  assert.deepEqual(calls.at(-1),{name:'get_vote_summary',args:{poll_id:'poll'}});
  const anon=createBackendClient({auth:{getSession:async()=>{throw Error('public read must not require a session');}},
   rpc:async(name,args)=>({data:{items:[{id:'g',harm_type:'privacy_leak',member_count:10}],next_cursor:null},error:null})});

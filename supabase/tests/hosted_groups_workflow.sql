@@ -25,6 +25,7 @@ select pg_temp.use_user(1);
 select set_config('test.rp',public.open_poll(pg_temp.v('gid'),'representative',now()+interval '1 hour',now()+interval '2 hours')->>'poll_id',true);
 select public.apply_representative(pg_temp.v('rp'));
 select set_config('test.option',public.get_vote_summary(pg_temp.v('rp'))->'options'->0->>'option_id',true);
+select pg_temp.ok((select bool_and(o->>'candidate_user_id'=pg_temp.uid(1)::text and o->'proposal_id'='null'::jsonb and o->'method_code'='null'::jsonb) from jsonb_array_elements(public.get_vote_summary(pg_temp.v('rp'))->'options')o),'representative option has candidate_user_id');
 select pg_temp.rejects($q$select public.cast_representative_vote(pg_temp.v('rp'),pg_temp.v('option'))$q$,'POLL_NOT_OPEN');
 reset role;
 update public.polls set opens_at=now()-interval '1 second' where id=pg_temp.v('rp');
@@ -64,6 +65,7 @@ select set_config('test.mp',public.open_poll(pg_temp.v('gid'),'method',now()+int
 reset role;
 update public.polls set opens_at=now()-interval '1 second'where id=pg_temp.v('mp');
 set local role authenticated;
+select pg_temp.ok((select array_agg(o->>'method_code' order by o->>'method_code')=array['collective','consumer','med','suit'] and bool_and(o->'proposal_id'='null'::jsonb and o->'candidate_user_id'='null'::jsonb) from jsonb_array_elements(public.get_vote_summary(pg_temp.v('mp'))->'options')o),'method options have method_code');
 select public.cast_method_vote(pg_temp.v('mp'),'suit');
 reset role;
 update public.polls set opens_at=now()-interval '2 days',closes_at=now()-interval '1 day'where id=pg_temp.v('mp');
@@ -98,7 +100,9 @@ select set_config('test.fp',public.open_poll(pg_temp.v('gid'),'firm',now()+inter
 reset role;
 update public.polls set opens_at=now()-interval '1 second'where id=pg_temp.v('fp');
 set local role authenticated;
-select public.cast_firm_vote(pg_temp.v('fp'),pg_temp.v('proposal'));
+select pg_temp.ok((select count(*)=1 and bool_and(o->>'proposal_id'=pg_temp.v('proposal')::text and o->'method_code'='null'::jsonb and o->'candidate_user_id'='null'::jsonb) from jsonb_array_elements(public.get_vote_summary(pg_temp.v('fp'))->'options')o),'firm option exposes proposal_id');
+select public.cast_firm_vote(pg_temp.v('fp'),(public.get_vote_summary(pg_temp.v('fp'))->'options'->0->>'proposal_id')::uuid);
+select pg_temp.ok((public.get_vote_summary(pg_temp.v('fp'))->'options'->0->>'vote_count')::integer=1,'firm vote counted via summary proposal_id');
 reset role;
 update public.polls set opens_at=now()-interval '2 days',closes_at=now()-interval '1 day'where id=pg_temp.v('fp');
 select pg_temp.ok(public.close_vote(pg_temp.v('fp'))->>'state'='closed','firm selected');
