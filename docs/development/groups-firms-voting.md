@@ -143,3 +143,10 @@ supabase db query --remote=jnpbuulrmgdkzbiywjtd \
 ```
 
 이 검증은 DB 역할과 JWT claim을 설정한 SQL 검사다. PR #7 전체 흐름의 실제 Auth/PostgREST HTTP, 다중 연결 경합, Storage 바이트 업로드, NTS, Cron 예약 호출, 프론트 화면 통합은 완료로 표시하지 않는다. Cron 등록과 운영 동의문 활성화는 별도 담당자 작업으로 남긴다.
+
+## 2026-11-26 투표 요약 선택지 참조값
+
+- 새 migration `20261126010000_vote_summary_option_refs.sql`로 `get_vote_summary`의 `options` 각 항목에 `proposal_id`, `method_code`, `candidate_user_id`를 추가했다. 기존 `option_id`, `label`, `vote_count`는 유지하고 해당 없는 값은 null이다. 프론트가 `castFirmVote`에 넘길 `proposal_id`를 요약 응답에서 얻는다.
+- 집계 방식, `require_member` 권한, 개인 표 비공개, SECURITY DEFINER·빈 search_path·authenticated 전용 실행 권한은 바꾸지 않았다. `get_my_proposal_vote_summary`는 같은 집계 규칙(마감 전 ballots, 마감 후 poll_results)과 본인 제안 한정 규칙임을 확인했고 변경하지 않았다.
+- `src/data/client.mjs` 변환에 `proposalId`, `methodCode`, `candidateUserId`를 추가했다. 다른 RPC 응답에서 `proposal_id`는 알림 `payload` 안에만 있으며 payload는 변환하지 않으므로 영향이 없다.
+- 검증: `npm test` 34/34 통과. hande_dev(`jnpbuulrmgdkzbiywjtd`)에 `db push`로 적용했고 `hosted_groups_workflow.sql`(선택지 참조값 검사 추가)과 `hosted_firm_auto_approve.sql` PASS, fixture 잔존 0건. 운영 프로젝트에는 적용하지 않았다.

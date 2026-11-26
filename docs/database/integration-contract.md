@@ -64,11 +64,25 @@ type Ballot = { pollId: Id; optionId: Id; updatedAt: Time };
 type PollState = 'scheduled' | 'open' | 'closed' | 'tied' | 'no_votes' | 'cancelled';
 type VoteSummary = { pollId: Id; kind: 'representative' | 'method' | 'firm';
   state: PollState; opensAt: Time; closesAt: Time; serverTime: Time;
-  totalVotes: number; options: { optionId: Id; label: string; voteCount: number }[];
-  myOptionId: Id | null; winnerOptionId: Id | null };
+  totalVotes: number; options: VoteOption[];
+  myOptionId: Id | null; winnerOptionId: Id | null; isFinalized: boolean };
+// 각 선택지는 kind에 맞는 참조 하나만 채우고 나머지는 null이다.
+// representative → candidateUserId, method → methodCode, firm → proposalId.
+type VoteOption = { optionId: Id; label: string; voteCount: number;
+  proposalId: Id | null; methodCode: Method | null; candidateUserId: Id | null };
 ```
 
 Group은 공개용 허용 필드만 포함한다. 내 권한·참여 여부는 별도 본인 membership으로 얻는다. Proposal의 금액은 1인당 착수금이다. VoteSummary는 그룹 참여자용이며 개별 투표자 목록을 포함하지 않는다.
+
+투표 호출 값: 로펌 투표는 `castFirmVote({pollId, proposalId: option.proposalId})`, 방법 투표는 `castMethodVote({pollId, choice: option.methodCode})`, 대표자 투표는 `castRepresentativeVote({pollId, optionId: option.optionId})`를 사용한다. `candidateUserId`는 후보 서비스 프로필 ID이며 투표자 정보가 아니다. 집계 방식(마감 전 실시간 ballots, 마감 후 확정 결과)과 참여자 전용 권한은 그대로다.
+
+```json
+{"data":{"pollId":"<uuid>","kind":"firm","state":"open","opensAt":"2026-11-26T09:00:00Z","closesAt":"2026-11-27T09:00:00Z",
+ "serverTime":"2026-11-26T10:00:00Z","totalVotes":3,
+ "options":[{"optionId":"<uuid>","label":"<로펌명>","voteCount":2,"proposalId":"<uuid>","methodCode":null,"candidateUserId":null},
+            {"optionId":"<uuid>","label":"<로펌명>","voteCount":1,"proposalId":"<uuid>","methodCode":null,"candidateUserId":null}],
+ "myOptionId":"<uuid>","winnerOptionId":null,"isFinalized":false}}
+```
 
 ## 3. 함수 목록과 입력·출력
 

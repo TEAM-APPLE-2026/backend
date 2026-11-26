@@ -11,6 +11,7 @@ async function elect(db){
  const pid=await open(db,gid,'representative');await actor(db,1,'select public.apply_representative($1)v',[pid]);await actor(db,2,'select public.apply_representative($1)v',[pid]);
  const summary=await actor(db,1,'select public.get_vote_summary($1)v',[pid]);
  const option=summary.options.find(x=>x.label==='User 1').option_id;
+ for(const o of summary.options){assert.equal(o.candidate_user_id,o.label==='User 1'?uid(1):uid(2));assert.equal(o.proposal_id,null);assert.equal(o.method_code,null);}
  await reject(actor(db,1,'select public.cast_representative_vote($1,$2)v',[pid,option]),'POLL_NOT_OPEN');
  await live(db,pid);await actor(db,1,'select public.cast_representative_vote($1,$2)v',[pid,option]);
  await actor(db,1,'select public.cast_representative_vote($1,$2)v',[pid,summary.options.find(x=>x.option_id!==option).option_id]);
@@ -26,7 +27,10 @@ async function elect(db){
 test('Voting lifecycle: 10-person election, time bounds, one ballot, suit decision, firm selection and idempotent notifications',async()=>{
  const{db}=await database();try{
  const gid=await elect(db);await reject(actor(db,2,"select public.open_poll($1,'method',now(),now()+interval '1 day')v",[gid]),'FORBIDDEN');
- const mp=await open(db,gid,'method');await live(db,mp);await actor(db,1,"select public.cast_method_vote($1,'suit')v",[mp]);await due(db,mp);
+ const mp=await open(db,gid,'method');
+ const ms=await actor(db,1,'select public.get_vote_summary($1)v',[mp]);
+ assert.deepEqual(ms.options.map(o=>o.method_code).sort(),['collective','consumer','med','suit']);
+ assert.ok(ms.options.every(o=>o.proposal_id===null&&o.candidate_user_id===null&&o.label===o.method_code));await live(db,mp);await actor(db,1,"select public.cast_method_vote($1,'suit')v",[mp]);await due(db,mp);
  assert.equal((await db.query('select public.close_due_votes()v')).rows[0].v.processed,1);
  await actor(db,1,"select public.set_proposal_deadline($1,now()+interval '1 day')v",[gid]);
  const fid=await firm(db,30),fid2=await firm(db,31,'0000000002');
@@ -37,10 +41,22 @@ test('Voting lifecycle: 10-person election, time bounds, one ballot, suit decisi
  await db.query("update public.groups set proposal_deadline=now()-interval '1 second'where id=$1",[gid]);
  const fp=await open(db,gid,'firm');await live(db,fp);
  await reject(actor(db,30,'select public.withdraw_proposal($1)v',[p1.id]),'PROPOSAL_CLOSED');
+ const before=await actor(db,2,'select public.get_vote_summary($1)v',[fp]);
+ assert.deepEqual(before.options.map(o=>o.proposal_id).sort(),[p1.id,p2.id].sort());
+ assert.ok(before.options.every(o=>o.method_code===null&&o.candidate_user_id===null&&o.vote_count===0));
+ assert.deepEqual(Object.keys(before.options[0]).sort(),['candidate_user_id','label','method_code','option_id','proposal_id','vote_count']);
  await actor(db,1,'select public.cast_firm_vote($1,$2)v',[fp,p1.id]);
+ const after=await actor(db,2,'select public.get_vote_summary($1)v',[fp]);
+ assert.equal(after.total_votes,1);assert.equal(after.my_option_id,null);
+ assert.equal(after.options.find(o=>o.proposal_id===p1.id).vote_count,1);
+ const voted=await actor(db,1,'select public.get_vote_summary($1)v',[fp]);
+ assert.equal(voted.my_option_id,voted.options.find(o=>o.proposal_id===p1.id).option_id);
  assert.equal((await actor(db,31,'select public.get_my_proposal_vote_summary($1)v',[fp])).my_vote_count,0);
  await reject(actor(db,31,'select public.get_vote_summary($1)v',[fp]),'FORBIDDEN');
  await due(db,fp);await db.query('select public.close_vote($1)',[fp]);
+ const final=await actor(db,1,'select public.get_vote_summary($1)v',[fp]);
+ assert.equal(final.is_finalized,true);assert.equal(final.winner_option_id,final.options.find(o=>o.proposal_id===p1.id).option_id);
+ assert.equal(final.options.find(o=>o.proposal_id===p1.id).vote_count,1);assert.equal(final.options.find(o=>o.proposal_id===p2.id).vote_count,0);
  assert.equal((await db.query('select proposal_id from public.group_selections where group_id=$1',[gid])).rows[0].proposal_id,p1.id);
  const count=(await db.query('select count(*)::int n from public.notifications')).rows[0].n;
  await db.query('select public.close_vote($1)',[fp]);assert.equal((await db.query('select count(*)::int n from public.notifications')).rows[0].n,count);
